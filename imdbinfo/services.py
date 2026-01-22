@@ -49,7 +49,28 @@ from .parsers import (
     parse_json_filmography,
 )
 from .locale import _retrieve_url_lang
+from .aws import AwsWaf
+from curl_cffi import Session as SyncSession
 
+sync_session = SyncSession(impersonate = "chrome")
+
+sync_session.headers = {
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'accept-language': 'en-US,en;q=0.5',
+        'cache-control': 'no-cache',
+        'pragma': 'no-cache',
+        'priority': 'u=0, i',
+        'sec-ch-ua': '"Chromium";v="136", "Brave";v="136", "Not.A/Brand";v="99"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'sec-fetch-user': '?1',
+        'sec-gpc': '1',
+        'upgrade-insecure-requests': '1',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+    }
 
 class TitleType(Enum):
     """
@@ -82,11 +103,20 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = f"{num:07d}"
     return imdb_id, lang
 
+def get_cookies(text):
+    try:
+      tk , host = AwsWaf.extract(text)
+      token = AwsWaf(tk, host, "www.imdb.com")()
+      sync_session.cookies.update({"aws-waf-token" : token})
+    except:
+      return {}
 
 def request_json_url(url: str) -> Any:
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
-    resp = niquests.get(url, headers={"User-Agent": user_agent})
+    resp = sync_session.get(url )
+    cookies = get_cookies(resp.text)
+    resp = sync_session.get(url)
     if resp.status_code != 200:
         logger.error("Error fetching %s: %s", url, resp.status_code)
         error_msg = f"Error fetching {url}: HTTP {resp.status_code} using User-Agent {user_agent}"
@@ -103,7 +133,9 @@ def request_json_url(url: str) -> Any:
 
 
 def method_name(headers, imdbId, payload, url) -> Any:
-    resp = niquests.post(url, headers=headers, json=payload)
+    resp = sync_session.post(url, headers=headers, json=payload)
+    cookies = get_cookies(resp.text)
+    resp = sync_session.post(url, headers=headers, json=payload)
     if resp.status_code != 200:
         logger.error("GraphQL request failed: %s", resp.status_code)
         error_msg = f"GraphQL request failed for {imdbId}: HTTP {resp.status_code}"
@@ -164,7 +196,9 @@ def search_title(
     logger.info("Searching for title '%s' [Type: %s]", title, type_log)
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
-    resp = niquests.get(url, headers={"User-Agent": user_agent})
+    resp = sync_session.get(url)
+    cookies = get_cookies(resp.text)
+    resp = sync_session.get(url)
     if resp.status_code != 200:
         logger.warning("Search request failed: %s", resp.status_code)
         return None
