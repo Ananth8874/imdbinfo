@@ -25,6 +25,7 @@
 - 🗂️ **Full filmography** for actors, directors and writers via `get_filmography`
 - 📝 **Typed Pydantic models** for predictable responses
 - ⚡ **Built-in caching** for faster repeated requests
+- 🛡️ **AWS WAF challenge solver** for automatic bypass of IMDb's AWS WAF protection
 - ✅ **No API keys required**
 
 ## Installation
@@ -273,6 +274,28 @@ for imdb_id in movies:
 - Uses Pydantic for type safety
 - No external dependencies or API keys required
 - Ideal for quick scripts and data analysis
+- Built-in AWS WAF challenge solver for reliable access
+
+## AWS WAF Challenge Solver
+
+IMDb recently introduced AWS WAF (Web Application Firewall) protection that can challenge automated requests. **imdbinfo** now includes an automatic AWS WAF solver that:
+
+- 🔍 **Automatically detects** AWS WAF challenges in responses
+- 🔄 **Automatically retries** requests with solved challenge cookies
+- 🛡️ **Seamlessly integrated** into all API functions
+- 📊 **No configuration required** - works out of the box
+
+The AWS WAF solver is built into the core request functions and works transparently:
+
+```python
+from imdbinfo import search_title, get_movie
+
+# AWS WAF challenges are automatically detected and solved
+results = search_title("The Matrix")  # Works even with WAF challenges
+movie = get_movie("tt0133093")  # Automatically bypasses WAF if encountered
+```
+
+All functions (`search_title`, `get_movie`, `get_name`, `get_episodes`, etc.) benefit from automatic WAF challenge solving without any changes to your code.
 
 ## Disclaimer
 This project and its authors are not affiliated in any way with IMDb Inc. or its affiliates. 

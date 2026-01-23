@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.8 (Unreleased)
+- **AWS WAF Challenge Solver**: Added automatic detection and solving of AWS WAF challenges
+  - New `waf_solver.py` module with AWS WAF detection and challenge solving functionality
+  - Integrated WAF solver into all HTTP request functions (`request_json_url`, `method_name`, `search_title`)
+  - Automatic retry logic with solved challenge cookies for seamless operation
+  - No configuration required - works transparently for all API functions
+  - Added comprehensive test suite (13 new tests) for WAF solver functionality
+- Updated README with AWS WAF solver documentation and usage examples
+
 ## v0.1.0
 - Fix bug in something
 - Improve documentation
