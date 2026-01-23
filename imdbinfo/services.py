@@ -49,6 +49,7 @@ from .parsers import (
     parse_json_filmography,
 )
 from .locale import _retrieve_url_lang
+from .waf_solver import is_waf_challenge, solve_waf_challenge
 
 
 class TitleType(Enum):
@@ -87,6 +88,18 @@ def request_json_url(url: str) -> Any:
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
     resp = niquests.get(url, headers={"User-Agent": user_agent})
+    
+    # Check for AWS WAF challenge
+    if is_waf_challenge(resp):
+        logger.info("AWS WAF challenge detected, attempting to solve...")
+        cookies = solve_waf_challenge(resp, url, headers={"User-Agent": user_agent})
+        if cookies:
+            # Retry with solved challenge cookies
+            logger.info("Retrying request with WAF solution cookies")
+            resp = niquests.get(url, headers={"User-Agent": user_agent}, cookies=cookies)
+        else:
+            logger.warning("Failed to solve AWS WAF challenge")
+    
     if resp.status_code != 200:
         logger.error("Error fetching %s: %s", url, resp.status_code)
         error_msg = f"Error fetching {url}: HTTP {resp.status_code} using User-Agent {user_agent}"
@@ -104,6 +117,18 @@ def request_json_url(url: str) -> Any:
 
 def method_name(headers, imdbId, payload, url) -> Any:
     resp = niquests.post(url, headers=headers, json=payload)
+    
+    # Check for AWS WAF challenge
+    if is_waf_challenge(resp):
+        logger.info("AWS WAF challenge detected in GraphQL request, attempting to solve...")
+        cookies = solve_waf_challenge(resp, url, headers=headers)
+        if cookies:
+            # Retry with solved challenge cookies
+            logger.info("Retrying GraphQL request with WAF solution cookies")
+            resp = niquests.post(url, headers=headers, json=payload, cookies=cookies)
+        else:
+            logger.warning("Failed to solve AWS WAF challenge for GraphQL request")
+    
     if resp.status_code != 200:
         logger.error("GraphQL request failed: %s", resp.status_code)
         error_msg = f"GraphQL request failed for {imdbId}: HTTP {resp.status_code}"
@@ -165,6 +190,18 @@ def search_title(
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
     resp = niquests.get(url, headers={"User-Agent": user_agent})
+    
+    # Check for AWS WAF challenge
+    if is_waf_challenge(resp):
+        logger.info("AWS WAF challenge detected in search request, attempting to solve...")
+        cookies = solve_waf_challenge(resp, url, headers={"User-Agent": user_agent})
+        if cookies:
+            # Retry with solved challenge cookies
+            logger.info("Retrying search request with WAF solution cookies")
+            resp = niquests.get(url, headers={"User-Agent": user_agent}, cookies=cookies)
+        else:
+            logger.warning("Failed to solve AWS WAF challenge for search request")
+    
     if resp.status_code != 200:
         logger.warning("Search request failed: %s", resp.status_code)
         return None
