@@ -74,21 +74,30 @@ def extract_challenge_script(html_content: str) -> Optional[str]:
     """
     Extract the AWS WAF challenge JavaScript code from the HTML response.
     
+    Note: This function is used for detection purposes only, not for security filtering.
+    The actual HTML parsing is done by lxml which properly handles malformed HTML.
+    
     Args:
         html_content: The HTML content containing the challenge
         
     Returns:
         The extracted JavaScript code, or None if not found
     """
-    # Look for script tags with challenge code
-    script_pattern = r'<script[^>]*>(.*?)</script>'
-    scripts = re.findall(script_pattern, html_content, re.DOTALL | re.IGNORECASE)
-    
-    for script in scripts:
-        # AWS WAF challenges typically contain certain keywords
-        if 'challenge' in script.lower() or 'captcha' in script.lower():
-            logger.debug("Found potential AWS WAF challenge script")
-            return script
+    # Use lxml for robust HTML parsing instead of regex
+    try:
+        from lxml import html as html_parser
+        tree = html_parser.fromstring(html_content)
+        scripts = tree.xpath('//script/text()')
+        
+        for script in scripts:
+            # AWS WAF challenges typically contain certain keywords
+            if isinstance(script, str) and ('challenge' in script.lower() or 'captcha' in script.lower()):
+                logger.debug("Found potential AWS WAF challenge script")
+                return script
+    except Exception as e:
+        logger.debug(f"Failed to parse HTML with lxml: {e}")
+        # Fallback: return None if parsing fails
+        return None
     
     logger.debug("No AWS WAF challenge script found")
     return None
@@ -111,7 +120,8 @@ def solve_waf_challenge(
     Args:
         response: The HTTP response containing the challenge
         url: The original URL that was requested
-        headers: Optional headers to use in challenge solving
+        headers: Optional headers that may be used in future implementations
+                for more sophisticated challenge solving
         
     Returns:
         A dictionary of cookies to use in subsequent requests, or None if solving failed
@@ -141,35 +151,3 @@ def solve_waf_challenge(
     
     logger.warning("No cookies could be extracted from AWS WAF challenge")
     return None
-
-
-def retry_with_solution(
-    original_request_func,
-    url: str,
-    headers: Optional[Dict[str, str]] = None,
-    cookies: Optional[Dict[str, str]] = None,
-    **kwargs
-) -> Any:
-    """
-    Retry a request with the WAF challenge solution cookies.
-    
-    Args:
-        original_request_func: The function to call for making the request
-        url: The URL to request
-        headers: Optional headers for the request
-        cookies: Cookies obtained from solving the challenge
-        **kwargs: Additional arguments to pass to the request function
-        
-    Returns:
-        The response from the retry request
-    """
-    logger.info(f"Retrying request to {url} with WAF solution")
-    
-    # Merge cookies if provided
-    if cookies:
-        if 'cookies' in kwargs:
-            kwargs['cookies'].update(cookies)
-        else:
-            kwargs['cookies'] = cookies
-    
-    return original_request_func(url, headers=headers, **kwargs)
