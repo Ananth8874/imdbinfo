@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hashlib
 import binascii
 from typing import Union, Callable, Any
