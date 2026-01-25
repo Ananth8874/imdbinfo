@@ -113,8 +113,7 @@ def request_json_url(url: str) -> Any:
 
 
 def method_name(headers, imdbId, payload, url) -> Any:
-    cookies = get_cookies()
-    resp = cffi_requests.post(url, headers=headers, json=payload , cookies=cookies , impersonate = "chrome")
+    resp = niquests.post(url, headers=headers, json=payload)
     if resp.status_code != 200:
         logger.error("GraphQL request failed: %s", resp.status_code)
         error_msg = f"GraphQL request failed for {imdbId}: HTTP {resp.status_code}"
@@ -174,8 +173,7 @@ def search_title(
     logger.info("Searching for title '%s' [Type: %s]", title, type_log)
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
-    cookies = get_cookies()
-    resp = cffi_requests.get(url , cookies=cookies , impersonate = "chrome")
+    resp = niquests.get(url, headers={"User-Agent": user_agent})
     if resp.status_code != 200:
         logger.warning("Search request failed: %s", resp.status_code)
         return None
