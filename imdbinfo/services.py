@@ -49,7 +49,8 @@ from .parsers import (
     parse_json_filmography,
 )
 from .locale import _retrieve_url_lang
-
+from .aws import AwsWaf
+from curl_cffi import requests
 
 class TitleType(Enum):
     """
@@ -64,7 +65,6 @@ class TitleType(Enum):
     TvMovie = "tvm"
     Video = "v"
 
-
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,6 @@ USER_AGENTS_LIST = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 ]
 
-
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = str(imdb_id)
     num = int(re.sub(r"\D", "", imdb_id))
@@ -82,11 +81,18 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = f"{num:07d}"
     return imdb_id, lang
 
+def get_cookies():
+  session = requests.Session(impersonate = "chrome")
+  response = session.get("https://www.imdb.com/")
+  tk , host = AwsWaf.extract(response.text)
+  token = AwsWaf(tk, host, "www.imdb.com" , session)()
+  return {'aws-waf-token': token}
 
 def request_json_url(url: str) -> Any:
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
-    resp = niquests.get(url, headers={"User-Agent": user_agent})
+    cookies = get_cookies()
+    resp = requests.get(url  , cookies=cookies, impersonate = "chrome")
     if resp.status_code != 200:
         logger.error("Error fetching %s: %s", url, resp.status_code)
         error_msg = f"Error fetching {url}: HTTP {resp.status_code} using User-Agent {user_agent}"
@@ -103,7 +109,8 @@ def request_json_url(url: str) -> Any:
 
 
 def method_name(headers, imdbId, payload, url) -> Any:
-    resp = niquests.post(url, headers=headers, json=payload)
+    cookies = get_cookies()
+    resp = requests.post(url, headers=headers, json=payload , cookies=cookies , impersonate = "chrome")
     if resp.status_code != 200:
         logger.error("GraphQL request failed: %s", resp.status_code)
         error_msg = f"GraphQL request failed for {imdbId}: HTTP {resp.status_code}"
@@ -115,7 +122,6 @@ def method_name(headers, imdbId, payload, url) -> Any:
         logger.error("GraphQL error: %s", data["errors"])
         raise Exception(f"GraphQL error for {imdbId}: {data['errors']}")
     return data
-
 
 @lru_cache(maxsize=128)
 def get_movie(imdb_id: str, locale: Optional[str] = None) -> Optional[MovieDetail]:
@@ -164,7 +170,8 @@ def search_title(
     logger.info("Searching for title '%s' [Type: %s]", title, type_log)
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
-    resp = niquests.get(url, headers={"User-Agent": user_agent})
+    cookies = get_cookies()
+    resp = requests.get(url , cookies=cookies , impersonate = "chrome")
     if resp.status_code != 200:
         logger.warning("Search request failed: %s", resp.status_code)
         return None
