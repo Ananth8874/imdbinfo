@@ -50,7 +50,7 @@ from .parsers import (
 )
 from .locale import _retrieve_url_lang
 from .aws import AwsWaf
-from curl_cffi import requests
+from curl_cffi import requests as cffi_requests
 
 class TitleType(Enum):
     """
@@ -82,17 +82,21 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     return imdb_id, lang
 
 def get_cookies():
-  session = requests.Session(impersonate = "chrome")
-  response = session.get("https://www.imdb.com/")
-  tk , host = AwsWaf.extract(response.text)
-  token = AwsWaf(tk, host, "www.imdb.com" , session)()
-  return {'aws-waf-token': token}
+    try:
+        session = cffi_requests.Session(impersonate = "chrome")
+        response = session.get("https://www.imdb.com/")
+        tk , host = AwsWaf.extract(response.text)
+        token = AwsWaf(tk, host, "www.imdb.com" , session)()
+        return {'aws-waf-token': token}
+    except Exception as e:
+        logger.debug("No AWS WAF token: %s", e)
+        return {}
 
 def request_json_url(url: str) -> Any:
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
     cookies = get_cookies()
-    resp = requests.get(url  , cookies=cookies, impersonate = "chrome")
+    resp = cffi_requests.get(url  , cookies=cookies, impersonate = "chrome")
     if resp.status_code != 200:
         logger.error("Error fetching %s: %s", url, resp.status_code)
         error_msg = f"Error fetching {url}: HTTP {resp.status_code} using User-Agent {user_agent}"
@@ -110,7 +114,7 @@ def request_json_url(url: str) -> Any:
 
 def method_name(headers, imdbId, payload, url) -> Any:
     cookies = get_cookies()
-    resp = requests.post(url, headers=headers, json=payload , cookies=cookies , impersonate = "chrome")
+    resp = cffi_requests.post(url, headers=headers, json=payload , cookies=cookies , impersonate = "chrome")
     if resp.status_code != 200:
         logger.error("GraphQL request failed: %s", resp.status_code)
         error_msg = f"GraphQL request failed for {imdbId}: HTTP {resp.status_code}"
@@ -171,7 +175,7 @@ def search_title(
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
     cookies = get_cookies()
-    resp = requests.get(url , cookies=cookies , impersonate = "chrome")
+    resp = cffi_requests.get(url , cookies=cookies , impersonate = "chrome")
     if resp.status_code != 200:
         logger.warning("Search request failed: %s", resp.status_code)
         return None
