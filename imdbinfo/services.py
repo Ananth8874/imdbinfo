@@ -49,7 +49,7 @@ from .parsers import (
     parse_json_filmography,
 )
 from .locale import _retrieve_url_lang
-from .aws import AwsWaf
+from .aws_waf.aws import AwsWaf
 from curl_cffi import requests as cffi_requests
 
 class TitleType(Enum):
@@ -82,6 +82,11 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     return imdb_id, lang
 
 def get_cookies():
+    """
+    Try to get AWS WAF token cookies if needed.
+    Returns a dictionary of cookies to be used in requests.
+    if no token is needed, returns an empty dictionary.
+    """
     try:
         session = cffi_requests.Session(impersonate = "chrome")
         response = session.get("https://www.imdb.com/")
