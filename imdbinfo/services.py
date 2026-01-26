@@ -28,6 +28,9 @@ import niquests
 import json
 from lxml import html
 from enum import Enum
+from curl_cffi import requests as cffi_requests, Response
+from .locale import _retrieve_url_lang
+from .aws_waf.aws import AwsWaf
 
 
 from .models import (
@@ -48,9 +51,6 @@ from .parsers import (
     parse_json_reviews,
     parse_json_filmography,
 )
-from .locale import _retrieve_url_lang
-from .aws_waf.aws import AwsWaf
-from curl_cffi import requests as cffi_requests, Response
 
 #enable WAF handling by default, will be disabled if not needed after first request for performance
 WAF_ON=True
