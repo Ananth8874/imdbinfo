@@ -65,6 +65,7 @@ class TitleType(Enum):
     TvMovie = "tvm"
     Video = "v"
 
+
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ logger = logging.getLogger(__name__)
 USER_AGENTS_LIST = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 ]
+
 
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = str(imdb_id)
@@ -117,7 +119,7 @@ def request_json_url(url: str) -> Any:
     return raw_json
 
 
-def method_name(headers, imdbId, payload, url) -> Any:
+def request_graphql_url(headers, imdbId, payload, url) -> Any:
     resp = niquests.post(url, headers=headers, json=payload)
     if resp.status_code != 200:
         logger.error("GraphQL request failed: %s", resp.status_code)
@@ -130,6 +132,7 @@ def method_name(headers, imdbId, payload, url) -> Any:
         logger.error("GraphQL error: %s", data["errors"])
         raise Exception(f"GraphQL error for {imdbId}: {data['errors']}")
     return data
+
 
 @lru_cache(maxsize=128)
 def get_movie(imdb_id: str, locale: Optional[str] = None) -> Optional[MovieDetail]:
@@ -397,7 +400,7 @@ def _get_extended_title_info(imdb_id) -> dict:
     )
     payload = {"query": query}
     logger.info("Fetching title %s from GraphQL API", imdb_id)
-    data = method_name(headers, imdbId, payload, url)
+    data = request_graphql_url(headers, imdbId, payload, url)
     raw_json = data.get("data", {}).get("title", {})
     return raw_json
 
@@ -527,6 +530,6 @@ def _get_extended_name_info(person_id) -> dict:
     }
     payload = {"query": query}
     logger.info("Fetching person %s from GraphQL API", person_id)
-    data = method_name(headers, person_id, payload, url)
+    data = request_graphql_url(headers, person_id, payload, url)
     raw_json = data.get("data", {}).get("name", {})
     return raw_json
