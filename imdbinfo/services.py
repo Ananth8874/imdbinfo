@@ -28,7 +28,7 @@ import niquests
 import json
 from lxml import html
 from enum import Enum
-from curl_cffi import requests as cffi_requests, Response
+from curl_cffi import requests as cffi_requests
 from .locale import _retrieve_url_lang
 from .aws_waf.aws import AwsWaf
 
@@ -124,17 +124,17 @@ def request_json_url(url: str) -> Any:
     return raw_json
 
 
-def request_handler(url: str) -> Response:
+def request_handler(url: str) -> Any:
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
     cookies = get_cookies()
-    # # if cookies is an empty dict, no cookies will be sent and normal request will be used (WAF is off)
-    # if cookies:
-    #     logger.debug("Using cookies: %s", cookies)
-    #     resp = cffi_requests.get(url, cookies=cookies, impersonate="chrome")
-    # else:
-    headers = {"User-Agent": user_agent}
-    resp = niquests.get(url, headers=headers)
+    # if cookies is an empty dict, no cookies will be sent and normal request will be used (WAF is off)
+    if cookies:
+        logger.debug("Using cookies: %s", cookies)
+        resp = cffi_requests.get(url, cookies=cookies, impersonate="chrome")
+    else:
+        headers = {"User-Agent": user_agent}
+        resp = niquests.get(url, headers=headers)
     return resp
 
 
