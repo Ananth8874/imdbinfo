@@ -1,6 +1,7 @@
 import json
 import os
 from imdbinfo import parsers
+from imdbinfo.models import ParentalGuideList
 
 SAMPLE_DIR = os.path.join(os.path.dirname(__file__), "sample_json_source")
 
@@ -246,3 +247,44 @@ def test_parse_principal_credits_v2_stars_with_none_credits():
     # Case 4: empty list
     result = parsers._parse_principal_credits_v2_stars([])
     assert result == []
+
+def test_parse_json_parental_guide_with_data():
+    raw_json = {
+        "parentsGuide": {
+            "categories": [
+                {
+                    "category": {"id": "violence", "text": "Violence"},
+                    "guideItems": {
+                        "edges": [
+                            {"node": {"isSpoiler": False, "text": {"plaidHtml": "Fighting scenes"}}},
+                            {"node": {"isSpoiler": True, "text": {"plaidHtml": "Major spoiler"}}},
+                        ]
+                    },
+                    "severityBreakdown": [
+                        {"votedFor": 1, "voteType": "Mild"},
+                        {"votedFor": 5, "voteType": "Severe"},
+                    ],
+                }
+            ]
+        }
+    }
+    pg = parsers.parse_json_parental_guide(raw_json)
+    assert pg is not None
+    assert isinstance(pg, ParentalGuideList)
+    assert len(pg.categories) == 1
+    # list_categories should map category id -> top severity type ('Severe' has highest votes)
+    assert pg.classify() == {"violence": "Severe"}
+    # category helper checks
+    cat = pg.categories[0]
+    assert cat.id == "violence"
+    assert cat.has_guide_items() is True
+    assert cat.guide_items_texts(spoiler=False) == ["Fighting scenes"]
+    assert cat.guide_items_texts(spoiler=True) == ["Major spoiler"]
+
+def test_parse_json_parental_guide_with_empty_or_missing_returns_none():
+    # missing parentsGuide
+    assert parsers.parse_json_parental_guide({}) is None
+    # parentsGuide explicitly None
+    assert parsers.parse_json_parental_guide({"parentsGuide": None}) is None
+    # parentsGuide empty dict
+    assert parsers.parse_json_parental_guide({"parentsGuide": {}}) is None

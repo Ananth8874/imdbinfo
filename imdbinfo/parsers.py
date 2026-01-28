@@ -43,7 +43,7 @@ from .models import (
     AkaInfo,
     CompanyInfo,
     AkasData,
-    AwardInfo,
+    AwardInfo, ParentalGuideList,
 )
 from .transformers import (
     _release_date,
@@ -777,3 +777,9 @@ def parse_json_filmography(raw_json) -> Dict[str, List[MovieBriefInfo]]:
             MovieBriefInfo.from_filmography(pjmespatch("title", edge))
         )
     return credits_by_job
+
+
+
+def parse_json_parental_guide(raw_json):
+    """Return ParentalGuideData or None."""
+    return ParentalGuideList.from_raw(raw_json.get('parentsGuide'))

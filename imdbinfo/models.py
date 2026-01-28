@@ -600,3 +600,83 @@ class AkasData(BaseModel):
             return self.imdbId
         else:
             raise KeyError(f"Key {item} not found in AkasDataModel")
+
+
+class ParentalGuideText(BaseModel):
+    is_spoiler: bool = False
+    text: str = ""
+
+    @classmethod
+    def from_node(cls, node: dict) -> "ParentalGuideText":
+        return cls(
+            is_spoiler=node.get("isSpoiler", False),
+            text=node.get("text", {}).get("plaidHtml",""),
+        )
+
+
+class SeverityItem(BaseModel):
+    n_votes: int = 0
+    type: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SeverityItem":
+        return cls(n_votes=data.get("votedFor", 0), type=data.get("voteType", ""))
+
+
+class ParentalGuideCategory(BaseModel):
+    id: str = ""
+    text: str = ""
+    pg_texts: List[ParentalGuideText] = Field(default_factory=list)
+    severity_items: List[SeverityItem] = Field(default_factory=list)
+
+    @classmethod
+    def from_edge(cls, edge: dict) -> "ParentalGuideCategory":
+        cat = edge.get("category", {}) or {}
+        guide_items = [
+            ParentalGuideText.from_node(item.get("node", {}) or {})
+            for item in edge.get("guideItems", {}).get("edges", []) or []
+        ]
+        severity = [
+            SeverityItem.from_dict(s) for s in edge.get("severityBreakdown", []) or []
+        ]
+        return cls(
+            id=cat.get("id", ""),
+            text=cat.get("text", ""),
+            pg_texts=guide_items,
+            severity_items=severity,
+        )
+    def severity(self) -> Optional[SeverityItem]:
+        """Return the severity item with the highest voted_for count, or None if no items exist."""
+        if not self.severity_items:
+            return None
+        return max(self.severity_items, key=lambda item: item.n_votes)
+
+    def has_guide_items(self) -> bool:
+        """Return True if there are any guide items in this category."""
+        return len(self.pg_texts) > 0
+
+    def guide_items_texts(self, spoiler=False) -> List[str]:
+        """Return a list of texts from the guide items."""
+        return [item.text for item in self.pg_texts if item.is_spoiler == spoiler]
+
+
+class ParentalGuideList(BaseModel):
+    categories: List[ParentalGuideCategory] = Field(default_factory=list)
+
+    @classmethod
+    def from_raw(cls, parental_guide: dict) -> Optional["ParentalGuideList"]:
+        if not parental_guide:
+            return None
+        categories = [
+            ParentalGuideCategory.from_edge(edge) for edge in parental_guide.get("categories", []) or []
+        ]
+        return cls(categories=categories)
+
+    def classify(self) -> dict[str, str]:
+        """Return the list of parental guide categories."""
+        return {category.id: category.severity().type for category in self.categories}
+
+    def __str__(self):
+        return f"{self.classify()}"
+    def __repr__(self):
+        return self.__str__()
