@@ -49,7 +49,7 @@ from .parsers import (
     parse_json_akas,
     parse_json_trivia,
     parse_json_reviews,
-    parse_json_filmography,
+    parse_json_filmography, parse_json_parental_guide,
 )
 
 #enable WAF handling by default, will be disabled if not needed after first request for performance
@@ -325,10 +325,23 @@ def get_reviews(imdb_id: str) -> List[Dict]:
     return reviews_list
 
 
+
+def get_parental_guide(imdb_id: str) -> Dict:
+    imdb_id, _ = normalize_imdb_id(imdb_id)
+    raw_json = _get_extended_title_info(imdb_id)
+    if not raw_json:
+        logger.warning("No parental guide found for title %s", imdb_id)
+        return {}
+    parental_guide = parse_json_parental_guide(raw_json)
+    logger.debug("Fetched parental guide for title %s", imdb_id)
+    return parental_guide
+
+
 @lru_cache(maxsize=128)
 def _get_extended_title_info(imdb_id) -> dict:
     """
-    Fetch extended info (like AKAs) using IMDb's GraphQL API.
+    Fetch extended info using IMDb's GraphQL API:
+    including akas, trivia, reviews, interests, and parental guide.
     """
     imdbId = "tt" + imdb_id
     url = "https://api.graphql.imdb.com/"
@@ -346,60 +359,95 @@ def _get_extended_title_info(imdb_id) -> dict:
             originalTitle: originalTitleText {
               text
             }
-              interests(first:20){
-                edges{node{primaryText{text}}}
-           }
+            interests(first: 20) {
+              edges {
+                node {
+                  primaryText {
+                    text
+                  }
+                }
+              }
+            }
             akas(first: 200) {
               edges {
                 node {
-                  country { name: text code: id }
-                  language { name: text code: id }
+                  country {
+                    name: text
+                    code: id
+                  }
+                  language {
+                    name: text
+                    code: id
+                  }
                   title: text
                 }
               }
             }
-             trivia(first: 50) {
-          edges {
-            node {
-              id
-              displayableArticle {
-                body {
-                  plaidHtml
+            trivia(first: 50) {
+              edges {
+                node {
+                  id
+                  displayableArticle {
+                    body {
+                      plaidHtml
+                    }
+                  }
+                  interestScore {
+                    usersVoted
+                    usersInterested
+                  }
                 }
               }
-              interestScore {
-                usersVoted
-                usersInterested
-              }
             }
-          }
-        }
-        reviews(first: 50) {
-          edges {
-            node {
-              id
-              spoiler
-              author {
-                nickName
-              }
-              summary {
-                originalText
-              }
-              text {
-                originalText {
-                  plaidHtml
+            reviews(first: 50) {
+              edges {
+                node {
+                  id
+                  spoiler
+                  author {
+                    nickName
+                  }
+                  summary {
+                    originalText
+                  }
+                  text {
+                    originalText {
+                      plaidHtml
+                    }
+                  }
+                  authorRating
+                  submissionDate
+                  helpfulness {
+                    upVotes
+                    downVotes
+                  }
+                  __typename
                 }
               }
-              authorRating
-              submissionDate
-              helpfulness {
-                upVotes
-                downVotes
-              }
-              __typename
             }
-          }
-        }
+             parentsGuide {
+                  categories {
+                    category {
+                      id
+                      text
+                    }
+                    guideItems(first: 10) {
+                      edges {
+                        node {
+                          isSpoiler
+                          text {
+                            plaidHtml
+                          }
+                        }
+                      }
+                    }
+                    severity{id,votedFor}
+                    severityBreakdown {
+                      votedFor
+                      voteType
+                    }
+                  }
+                }
           }
         }
         """
