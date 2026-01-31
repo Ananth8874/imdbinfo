@@ -25,6 +25,7 @@ That’s exactly why I built [`imdbinfo`](https://github.com/tveronesi/imdbinfo)
 - 📸 **Poster images** and **backdrops**
 - 📊 **Ratings** from IMDb and other sources
 - 🗂️ **Full filmography** for actors, directors and writers
+- 🛡️ **Parental guide**   including content advisories, severity level, spoiler flags, and content descriptions
 - 📝 **Typed Pydantic models** for predictable responses
 - ⚡ **Built-in caching** for faster repeated requests
 - ✅ **No API keys required**
