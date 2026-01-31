@@ -273,13 +273,13 @@ def test_parse_json_parental_guide_with_data():
     assert isinstance(pg, ParentalGuideList)
     assert len(pg.categories) == 1
     # list_categories should map category id -> top severity type ('Severe' has highest votes)
-    assert pg.classify() == {"violence": "Severe"}
+    assert pg.summary == {"violence": "Severe"}
     # category helper checks
     cat = pg.categories[0]
     assert cat.id == "violence"
-    assert cat.has_guide_items() is True
-    assert cat.guide_items_texts(spoiler=False) == ["Fighting scenes"]
-    assert cat.guide_items_texts(spoiler=True) == ["Major spoiler"]
+    assert cat.has_category_texts() is True
+    assert cat.category_texts_list(spoiler=False) == ["Fighting scenes"]
+    assert cat.category_texts_list(spoiler=True) == ["Major spoiler"]
 
 def test_parse_json_parental_guide_with_empty_or_missing_returns_none():
     # missing parentsGuide
