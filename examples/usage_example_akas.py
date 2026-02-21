@@ -29,3 +29,7 @@ for imdb_id in movies_list:
     print(f"Trivia: {movie_trivia[:5]}")
     print(f"Parental Guide: {parental_guide}")
     print("##########################################################################")
+    for category in parental_guide.categories:
+        print(category)
+        for category_text in category.content_descriptions:
+            print(f" - {category_text.text} (SPOILER: {category_text.is_spoiler})")

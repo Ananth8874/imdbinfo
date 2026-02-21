@@ -1,7 +1,7 @@
 from imdbinfo.models import Person, CastMember, MovieBriefInfo, MovieDetail
 from imdbinfo.models import SeriesMixin
 from imdbinfo.models import InfoSeries, InfoEpisode
-from imdbinfo.models import ParentalGuideText, SeverityItem, ParentalGuideCategory, ParentalGuideList
+from imdbinfo.models import ParentalGuideContentDescription, ParentalGuideCategory, ParentalGuideList
 
 
 def test_person_from_directors():
@@ -91,16 +91,9 @@ def test_info_episode_str():
 
 def test_parental_guide_item_from_node():
     node = {"isSpoiler": True, "text": {"plaidHtml": "Contains spoilers"}}
-    item = ParentalGuideText.from_node(node)
+    item = ParentalGuideContentDescription.from_node(node)
     assert item.is_spoiler is True
     assert item.text == "Contains spoilers"
-
-
-def test_severity_breakdown_item_from_dict():
-    data = {"votedFor": 5, "voteType": "Severe"}
-    sev = SeverityItem.from_dict(data)
-    assert sev.n_votes == 5
-    assert sev.type == "Severe"
 
 
 def test_parental_guide_category_from_edge_and_severity():
@@ -121,24 +114,23 @@ def test_parental_guide_category_from_edge_and_severity():
     cat = ParentalGuideCategory.from_edge(edge)
     assert cat.id == "violence"
     assert cat.text == "Violence"
-    assert len(cat.pg_texts) == 2
-    assert len(cat.severity_items) == 3
-    assert cat.severity().type == "Severe"
+    assert len(cat.content_descriptions) == 2
+    assert cat.severity == "Severe"
 
 
 def test_parental_guide_category_helpers():
     cat = ParentalGuideCategory(
         id="language",
         text="Language",
-        pg_texts=[
-            ParentalGuideText(is_spoiler=False, text="Profanity"),
-            ParentalGuideText(is_spoiler=True, text="Plot-revealing insult"),
+        content_descriptions=[
+            ParentalGuideContentDescription(is_spoiler=False, text="Profanity"),
+            ParentalGuideContentDescription(is_spoiler=True, text="Plot-revealing insult"),
         ],
-        severity_items=[SeverityItem(n_votes=1, type="Mild")]
+        severity="Mild"
     )
-    assert cat.has_guide_items() is True
-    assert cat.guide_items_texts(spoiler=False) == ["Profanity"]
-    assert cat.guide_items_texts(spoiler=True) == ["Plot-revealing insult"]
+    assert cat.has_category_texts() is True
+    assert cat.category_texts_list(spoiler=False) == ["Profanity"]
+    assert cat.category_texts_list(spoiler=True) == ["Plot-revealing insult"]
 
 
 def test_parental_guide_data_from_raw_and_list_categories():
@@ -154,7 +146,7 @@ def test_parental_guide_data_from_raw_and_list_categories():
     pg = ParentalGuideList.from_raw(parental_guide)
     assert pg is not None
     assert len(pg.categories) == 1
-    assert pg.classify() == {"violence": "Moderate"}
+    assert pg.summary == {"violence": "Moderate"}
 
 
 def test_parental_guide_data_from_raw_with_empty_returns_none():
