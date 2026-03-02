@@ -43,7 +43,7 @@ def test_waf_bypass():
             print(f"  {i}. {movie.title} - {movie.imdbId}")
     except Exception as e:
         print(f"\n✗ FAILED! Error: {e}")
-        return False
+        sys.exit(1)
 
     # Test 2: Second search - should use cached token
     print("\n" + "=" * 80)
@@ -64,7 +64,7 @@ def test_waf_bypass():
             print(f"  {i}. {movie.title} - {movie.imdbId}")
     except Exception as e:
         print(f"\n✗ FAILED! Error: {e}")
-        return False
+        sys.exit(1)
 
     # Test 3: Third search - verify cache still works
     print("\n" + "=" * 80)
@@ -84,7 +84,7 @@ def test_waf_bypass():
             print(f"  {i}. {movie.title} - {movie.imdbId}")
     except Exception as e:
         print(f"\n✗ FAILED! Error: {e}")
-        return False
+        sys.exit(1)
 
     # Summary
     print("\n" + "=" * 80)
@@ -99,12 +99,7 @@ def test_waf_bypass():
 
 if __name__ == "__main__":
     print("\n🚀 Starting AWS WAF Bypass Tests...\n")
-    success = test_waf_bypass()
+    test_waf_bypass()
 
-    if success:
-        print("\n✅ All WAF bypass mechanisms working correctly!")
-    else:
-        print("\n❌ Some tests failed. Check logs above for details.")
-
-    sys.exit(0 if success else 1)
-
+    print("\n✅ All WAF bypass mechanisms working correctly!")
+    sys.exit(0)
