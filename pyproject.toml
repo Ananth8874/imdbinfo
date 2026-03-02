@@ -14,6 +14,7 @@ authors = [
 ]
 dependencies = [
     "niquests",
+    "curl-cffi",
     "lxml",
     "pydantic",
     "jmespath",

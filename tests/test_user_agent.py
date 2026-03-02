@@ -20,7 +20,7 @@ def test_user_agent_can_be_overridden(monkeypatch):
     custom_ua = "CustomUserAgent/1.0"
     services.USER_AGENTS_LIST = [custom_ua]
     
-    # Mock the niquests.get to capture the headers
+    # Mock the cffi_requests.get to capture the headers
     captured_headers = {}
     
     def mock_get(url, headers=None, **kwargs):
@@ -28,7 +28,7 @@ def test_user_agent_can_be_overridden(monkeypatch):
         html = b'<html><script id="__NEXT_DATA__">{"props":{"pageProps":{"aboveTheFoldData":{"id":"tt0133093"}}}}</script></html>'
         return SimpleNamespace(status_code=200, content=html)
     
-    monkeypatch.setattr(services.niquests, "get", mock_get)
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get)
     
     # Call get_movie and check the User-Agent used
     try:
@@ -53,7 +53,7 @@ def test_error_message_includes_status_code(monkeypatch):
             content=b"Not Found"
         )
     
-    monkeypatch.setattr(services.niquests, "get", mock_get_with_error)
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get_with_error)
     
     with pytest.raises(Exception) as exc_info:
         services.get_movie.cache_clear()
@@ -73,7 +73,7 @@ def test_error_message_includes_response_text(monkeypatch):
             content=b"Internal Server Error"
         )
     
-    monkeypatch.setattr(services.niquests, "get", mock_get_with_error)
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get_with_error)
     
     with pytest.raises(Exception) as exc_info:
         services.get_movie.cache_clear()
@@ -94,7 +94,7 @@ def test_get_name_error_message_includes_details(monkeypatch):
             content=b"Forbidden"
         )
     
-    monkeypatch.setattr(services.niquests, "get", mock_get_with_error)
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get_with_error)
     
     with pytest.raises(Exception) as exc_info:
         services.get_name.cache_clear()
@@ -115,7 +115,7 @@ def test_get_season_episodes_error_message_includes_details(monkeypatch):
             content=b"Bad Request"
         )
     
-    monkeypatch.setattr(services.niquests, "get", mock_get_with_error)
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get_with_error)
     
     with pytest.raises(Exception) as exc_info:
         services.get_season_episodes.cache_clear()

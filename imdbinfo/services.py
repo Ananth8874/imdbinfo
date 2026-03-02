@@ -25,6 +25,7 @@ from functools import lru_cache
 from time import time
 import logging
 import niquests
+from curl_cffi import requests as cffi_requests
 import json
 from lxml import html
 from enum import Enum
@@ -120,14 +121,8 @@ def request_json_url(url: str) -> Any:
 def request_handler(url: str) -> Any:
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
-    cookies = get_cookies()
-    # # if cookies is an empty dict, no cookies will be sent and normal request will be used (WAF is off)
-    # if cookies:
-    #     logger.debug("Using cookies: %s", cookies)
-    #     resp = cffi_requests.get(url, cookies=cookies, impersonate="chrome")
-    # else:
     headers = {"User-Agent": user_agent}
-    resp = niquests.get(url, headers=headers)
+    resp = cffi_requests.get(url, headers=headers, impersonate="chrome")
     return resp
 
 

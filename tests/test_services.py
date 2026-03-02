@@ -22,21 +22,21 @@ def mock_get_factory(filename: str):
 
 
 def test_get_movie(monkeypatch):
-    monkeypatch.setattr(services.niquests, "get", mock_get_factory("sample_resource.json"))
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get_factory("sample_resource.json"))
     movie = services.get_movie("tt0133093")
     assert movie.title == "The Matrix"
     assert movie.duration == 136
 
 
 def test_search_title(monkeypatch):
-    monkeypatch.setattr(services.niquests, "get", mock_get_factory("sample_search.json"))
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get_factory("sample_search.json"))
     result = services.search_title("matrix")
     assert result.titles[0].title == "The Matrix"
     assert result.names
 
 
 def test_search_title_includes_rating(monkeypatch):
-    monkeypatch.setattr(services.niquests, "get", mock_get_factory("sample_search.json"))
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get_factory("sample_search.json"))
     result = services.search_title("matrix")
     assert result.titles[0].rating == 8.7
     assert result.titles[1].rating == 7.2
@@ -44,7 +44,7 @@ def test_search_title_includes_rating(monkeypatch):
 
 
 def test_get_name(monkeypatch):
-    monkeypatch.setattr(services.niquests, "get", mock_get_factory("sample_person.json"))
+    monkeypatch.setattr(services.cffi_requests, "get", mock_get_factory("sample_person.json"))
     person = services.get_name("nm0000126")
     assert person.name == "Kevin Costner"
     assert "Balla coi lupi" in person.knownfor
