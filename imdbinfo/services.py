@@ -103,11 +103,18 @@ def get_cookies():
         return {'aws-waf-token': token}
     except Exception as e:
         logger.debug("No AWS WAF token: %s", e)
-        WAF_ON = False
         return {}
 
 def request_json_url(url: str) -> Any:
+    global WAF_ON
     resp = request_handler(url)
+    if resp.status_code == 202:
+        logger.warning("HTTP 202 received (WAF enforcement detected), retrying with Chrome impersonation...")
+        WAF_ON = True  # Reset WAF state to force fresh token retrieval
+        cookies = get_cookies()
+        if cookies:
+            logger.debug("Retrying with WAF token cookie")
+        resp = cffi_requests.get(url, cookies=cookies or {}, impersonate="chrome")
     if resp.status_code != 200:
         logger.error("Error fetching %s: %s", url, resp.status_code)
         error_msg = f"Error fetching {url}: HTTP {resp.status_code}"
@@ -127,6 +134,7 @@ def request_json_url(url: str) -> Any:
 
 
 def request_handler(url: str) -> Any:
+    global WAF_ON
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
     cookies = get_cookies()
@@ -137,6 +145,8 @@ def request_handler(url: str) -> Any:
     else:
         headers = {"User-Agent": user_agent}
         resp = niquests.get(url, headers=headers)
+        if resp.status_code == 200:
+            WAF_ON = False  # WAF not enforced; disable overhead for future requests
     return resp
 
 

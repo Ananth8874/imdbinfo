@@ -203,3 +203,71 @@ def test_graphql_error_response_includes_details():
     finally:
         # Restore original module
         services.niquests = original_niquests
+
+
+
+import types as _types
+
+
+def test_waf_202_retries_with_chrome_impersonation(monkeypatch):
+    """Test that an HTTP 202 response triggers a WAF retry using Chrome impersonation."""
+    html_200 = (
+        b'<html><script id="__NEXT_DATA__">'
+        b'{"props":{"pageProps":{"aboveTheFoldData":{"id":"tt0133093"}}}}'
+        b"</script></html>"
+    )
+
+    cffi_get_calls = []
+
+    def mock_niquests_get(*args, **kwargs):
+        return SimpleNamespace(status_code=202, text="WAF Challenge", content=b"WAF")
+
+    def mock_cffi_get(url, **kwargs):
+        cffi_get_calls.append(url)
+        return SimpleNamespace(status_code=200, content=html_200, text="")
+
+    # Mock cffi_requests so that Session (used by get_cookies) doesn't hit the network
+    mock_cffi = _types.SimpleNamespace(
+        get=mock_cffi_get,
+        Session=lambda **kwargs: _types.SimpleNamespace(
+            get=lambda url: SimpleNamespace(text="no challenge", status_code=200),
+            headers={},
+            cookies=_types.SimpleNamespace(get=lambda key, default=None: None),
+        ),
+    )
+
+    monkeypatch.setattr(services.niquests, "get", mock_niquests_get)
+    monkeypatch.setattr(services, "cffi_requests", mock_cffi)
+    monkeypatch.setattr(services, "WAF_ON", False)
+    services.get_movie.cache_clear()
+
+    try:
+        services.get_movie("tt0133093")
+    except Exception:
+        pass  # Parsing details are irrelevant; we only care the retry was attempted
+
+    # cffi_requests.get must have been called as the WAF retry mechanism
+    assert len(cffi_get_calls) == 1
+    assert "tt0133093" in cffi_get_calls[0]
+
+
+def test_get_cookies_does_not_permanently_disable_waf_on_extraction_failure(monkeypatch):
+    """Test that get_cookies failure does not permanently disable WAF."""
+    # Simulate a cffi Session whose page has no WAF challenge
+    mock_session = _types.SimpleNamespace(
+        get=lambda url: SimpleNamespace(text="normal imdb page", status_code=200),
+        headers={},
+        cookies=_types.SimpleNamespace(get=lambda key, default=None: None),
+    )
+    monkeypatch.setattr(
+        services.cffi_requests,
+        "Session",
+        lambda **kwargs: mock_session,
+    )
+    monkeypatch.setattr(services, "WAF_ON", True)
+
+    cookies = services.get_cookies()
+
+    assert cookies == {}
+    # WAF_ON must still be True so future requests can re-attempt the bypass
+    assert services.WAF_ON is True
