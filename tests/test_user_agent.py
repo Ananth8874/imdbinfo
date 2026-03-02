@@ -210,7 +210,7 @@ import types as _types
 
 
 def test_waf_202_retries_with_chrome_impersonation(monkeypatch):
-    """Test that an HTTP 202 response triggers a WAF retry using Chrome impersonation."""
+    """Test that an HTTP 202 response triggers a WAF challenge solve + retry via cffi."""
     html_200 = (
         b'<html><script id="__NEXT_DATA__">'
         b'{"props":{"pageProps":{"aboveTheFoldData":{"id":"tt0133093"}}}}'
@@ -226,7 +226,7 @@ def test_waf_202_retries_with_chrome_impersonation(monkeypatch):
         cffi_get_calls.append(url)
         return SimpleNamespace(status_code=200, content=html_200, text="")
 
-    # Mock cffi_requests so that Session (used by get_cookies) doesn't hit the network
+    # Mock cffi_requests so that Session (used by challenge solving) doesn't hit the network
     mock_cffi = _types.SimpleNamespace(
         get=mock_cffi_get,
         Session=lambda **kwargs: _types.SimpleNamespace(
@@ -238,6 +238,7 @@ def test_waf_202_retries_with_chrome_impersonation(monkeypatch):
 
     monkeypatch.setattr(services.niquests, "get", mock_niquests_get)
     monkeypatch.setattr(services, "cffi_requests", mock_cffi)
+    # WAF_ON=False so that request_handler uses niquests.get (triggering the 202)
     monkeypatch.setattr(services, "WAF_ON", False)
     services.get_movie.cache_clear()
 
@@ -246,7 +247,7 @@ def test_waf_202_retries_with_chrome_impersonation(monkeypatch):
     except Exception:
         pass  # Parsing details are irrelevant; we only care the retry was attempted
 
-    # cffi_requests.get must have been called as the WAF retry mechanism
+    # cffi_requests.get must have been called as the WAF 202 retry fallback
     assert len(cffi_get_calls) == 1
     assert "tt0133093" in cffi_get_calls[0]
 

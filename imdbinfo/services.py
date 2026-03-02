@@ -109,12 +109,18 @@ def request_json_url(url: str) -> Any:
     global WAF_ON
     resp = request_handler(url)
     if resp.status_code == 202:
-        logger.warning("HTTP 202 received (WAF enforcement detected), retrying with Chrome impersonation...")
-        WAF_ON = True  # Reset WAF state to force fresh token retrieval
-        cookies = get_cookies()
-        if cookies:
-            logger.debug("Retrying with WAF token cookie")
-        resp = cffi_requests.get(url, cookies=cookies or {}, impersonate="chrome")
+        logger.warning("HTTP 202 received (WAF enforcement detected), solving WAF challenge...")
+        try:
+            # The 202 response body contains the WAF challenge page — extract and solve it directly
+            session = cffi_requests.Session(impersonate="chrome")
+            tk, host = AwsWaf.extract(resp.text)
+            token = AwsWaf(tk, host, "www.imdb.com", session)()
+            WAF_ON = True
+            logger.debug("WAF challenge solved, retrying with token")
+            resp = cffi_requests.get(url, cookies={'aws-waf-token': token}, impersonate="chrome")
+        except Exception as e:
+            logger.warning("Failed to solve WAF challenge from 202 response: %s, falling back to Chrome impersonation without token (may not succeed)...", e)
+            resp = cffi_requests.get(url, cookies={}, impersonate="chrome")
     if resp.status_code != 200:
         logger.error("Error fetching %s: %s", url, resp.status_code)
         error_msg = f"Error fetching {url}: HTTP {resp.status_code}"
@@ -138,15 +144,13 @@ def request_handler(url: str) -> Any:
     user_agent = random.choice(USER_AGENTS_LIST)
     logger.debug("Using User-Agent: %s", user_agent)
     cookies = get_cookies()
-    # if cookies is an empty dict, no cookies will be sent and normal request will be used (WAF is off)
-    if cookies:
-        logger.debug("Using cookies: %s", cookies)
-        resp = cffi_requests.get(url, cookies=cookies, impersonate="chrome")
+    if WAF_ON:
+        # Use Chrome impersonation with optional WAF token cookie when WAF handling is active
+        logger.debug("Using Chrome impersonation%s", " with WAF token" if cookies else "")
+        resp = cffi_requests.get(url, cookies=cookies or {}, impersonate="chrome")
     else:
         headers = {"User-Agent": user_agent}
         resp = niquests.get(url, headers=headers)
-        if resp.status_code == 200:
-            WAF_ON = False  # WAF not enforced; disable overhead for future requests
     return resp
 
 
