@@ -50,6 +50,8 @@ from .parsers import (
     parse_json_filmography, parse_json_parental_guide,
 )
 
+GRAPHQL_URL = "https://api.graphql.imdb.com/"
+
 #enable WAF handling by default, will be disabled if not needed after first request for performance
 WAF_ON=True
 
@@ -335,7 +337,7 @@ def _get_extended_title_info(imdb_id) -> dict:
     including akas, trivia, reviews, interests, and parental guide.
     """
     imdbId = "tt" + imdb_id
-    url = "https://api.graphql.imdb.com/"
+    url = GRAPHQL_URL
     headers = {
         "Content-Type": "application/json",
     }
@@ -570,7 +572,7 @@ def _get_extended_name_info(person_id) -> dict:
         """
         % person_id
     )
-    url = "https://api.graphql.imdb.com/"
+    url = GRAPHQL_URL
     headers = {
         "Content-Type": "application/json",
     }
