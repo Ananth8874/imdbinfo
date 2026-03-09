@@ -174,7 +174,7 @@ def search_title(
     :param title_type: Optional filter(s) for media type. Must be a single TitleType enum member or a hashable tuple of TitleType members.
     """
     lang = f"{_retrieve_url_lang(locale)}/" if locale else ""
-    url = f"https://www.imdb.com/{lang}find?q={title}&s=tt"
+    url = f"https://www.imdb.com/{lang}find?q={title}"
 
     if not title_type:
         type_log = "All"
