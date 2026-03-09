@@ -175,24 +175,10 @@ def search_title(
     """
     lang = f"{_retrieve_url_lang(locale)}/" if locale else ""
     url = f"https://www.imdb.com/{lang}find?q={title}"
+    if title_type:
+        ttype_values = [tt.value for tt in (title_type if isinstance(title_type, tuple) else [title_type])]
+        url += f"&ttype={','.join(ttype_values)}"
 
-    if not title_type:
-        type_log = "All"
-    else:
-        if isinstance(title_type, tuple):
-            types_list = title_type
-        else:
-            types_list = [title_type]
-
-        ttype_values = [tt.value for tt in types_list]
-        ttype_names = [tt.name for tt in types_list]
-
-        ttype_value = ",".join(ttype_values)
-        type_log = ", ".join(ttype_names)
-
-        url += f"&ttype={ttype_value}"
-
-    logger.info("Searching for title '%s' [Type: %s]", title, type_log)
     raw_json = request_json_url(url)
 
     result = parse_json_search(raw_json)
@@ -330,6 +316,20 @@ def get_parental_guide(imdb_id: str) -> Dict:
     return parental_guide
 
 
+def get_filmography(imdb_id) -> dict:
+    """
+    Fetch full filmography for a person using the provided IMDb ID.
+    """
+    imdb_id, _ = normalize_imdb_id(imdb_id)
+    raw_json = _get_extended_name_info(imdb_id)
+    if not raw_json:
+        logger.warning("No full_credit found for name %s", imdb_id)
+        return {}
+    full_credits_list = parse_json_filmography(raw_json)
+    logger.debug("Fetched full_credits for name %s", imdb_id)
+    return full_credits_list
+
+
 @lru_cache(maxsize=128)
 def _get_extended_title_info(imdb_id) -> dict:
     """
@@ -451,20 +451,6 @@ def _get_extended_title_info(imdb_id) -> dict:
     data = request_graphql_url(headers, imdbId, payload, url)
     raw_json = data.get("data", {}).get("title", {})
     return raw_json
-
-
-def get_filmography(imdb_id) -> dict:
-    """
-    Fetch full filmography for a person using the provided IMDb ID.
-    """
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_name_info(imdb_id)
-    if not raw_json:
-        logger.warning("No full_credit found for name %s", imdb_id)
-        return {}
-    full_credits_list = parse_json_filmography(raw_json)
-    logger.debug("Fetched full_credits for name %s", imdb_id)
-    return full_credits_list
 
 
 def _get_extended_name_info(person_id) -> dict:
