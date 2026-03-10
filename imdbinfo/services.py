@@ -46,7 +46,8 @@ from .parsers import (
     parse_json_akas,
     parse_json_trivia,
     parse_json_reviews,
-    parse_json_filmography, parse_json_parental_guide, parse_json_search_new,
+    parse_json_filmography,
+    parse_json_parental_guide,
 )
 
 logger = logging.getLogger(__name__)
@@ -239,32 +240,8 @@ def search_title(search_term: str, locale: Optional[str] = None, title_type: Opt
 
     logger.info("Searching for '%s' using GraphQL API", search_term)
     data = request_graphql_url(headers=headers, search_term=search_term, payload=payload, url=url)
-    result = parse_json_search_new(data)
+    result = parse_json_search(data)
 
-    return result
-
-
-@lru_cache(maxsize=128)
-def search_title_old(
-    title: str, locale: Optional[str] = None, title_type: Optional[TitleFilter] = None
-) -> Optional[SearchResult]:
-    """
-    Search for a movie by title and return a list of titles and names.
-
-    :param title: Title to search for.
-    :param locale: Optional locale string (e.g., 'en', 'es').
-    :param title_type: Optional filter(s) for media type. Must be a single TitleType enum member or a hashable tuple of TitleType members.
-    """
-    lang = f"{_retrieve_url_lang(locale)}/" if locale else ""
-    url = f"https://www.imdb.com/{lang}find?q={title}"
-    if title_type:
-        ttype_values = [tt.value for tt in (title_type if isinstance(title_type, tuple) else [title_type])]
-        url += f"&ttype={','.join(ttype_values)}"
-
-    raw_json = request_json_url(url)
-
-    result = parse_json_search(raw_json)
-    logger.debug("Search for '%s' returned %s titles", title, len(result.titles))
     return result
 
 
