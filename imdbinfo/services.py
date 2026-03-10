@@ -28,8 +28,7 @@ import niquests
 import json
 from lxml import html
 from enum import Enum
-from .locale import _retrieve_url_lang
-
+from .locale import _retrieve_url_lang, _get_country_code_from_locale
 
 from .models import (
     SearchResult,
@@ -47,8 +46,11 @@ from .parsers import (
     parse_json_akas,
     parse_json_trivia,
     parse_json_reviews,
-    parse_json_filmography, parse_json_parental_guide,
+    parse_json_filmography,
+    parse_json_parental_guide,
 )
+
+logger = logging.getLogger(__name__)
 
 GRAPHQL_URL = "https://api.graphql.imdb.com/"
 
@@ -61,23 +63,29 @@ class TitleType(Enum):
     The values correspond to the URL parameter used in search queries.
     """
 
-    Movies = "ft"
-    Series = "tv"
-    Episodes = "ep"
-    Shorts = "sh"
-    TvMovie = "tvm"
-    Video = "v"
+    Movies = "ft" # MOVIE
+    Series = "tv" #TV
+    Episodes = "ep" # TV_EPISODE
+    Shorts = "sh" # MOVIE
+    TvMovie = "tvm" # TV
+    Video = "v" #ALL
+
+title_type_search_type = {
+    TitleType.Movies: "MOVIE",
+    TitleType.Series: "TV",
+    TitleType.Episodes: "TV_EPISODE",
+    TitleType.Shorts: "MOVIE",
+    TitleType.TvMovie: "TV",
+    TitleType.Video: ""
+}
 
 
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
-
-logger = logging.getLogger(__name__)
 
 # Users can override this by setting: imdbinfo.services.USER_AGENTS_LIST = [ "your-user-agent", ...]
 USER_AGENTS_LIST = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 ]
-
 
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = str(imdb_id)
@@ -133,18 +141,18 @@ def request_handler(url: str) -> Any:
     return resp
 
 
-def request_graphql_url(headers, imdbId, payload, url) -> Any:
+def request_graphql_url(headers, search_term, payload, url) -> Any:
     resp = niquests.post(url, headers=headers, json=payload)
     if resp.status_code != 200:
         logger.error("GraphQL request failed: %s", resp.status_code)
-        error_msg = f"GraphQL request failed for {imdbId}: HTTP {resp.status_code}"
+        error_msg = f"GraphQL request failed for {search_term}: HTTP {resp.status_code}"
         if resp.text:
             error_msg += f" - {resp.text[:200]}"
         raise Exception(error_msg)
     data = resp.json()
     if "errors" in data:
         logger.error("GraphQL error: %s", data["errors"])
-        raise Exception(f"GraphQL error for {imdbId}: {data['errors']}")
+        raise Exception(f"GraphQL error for {search_term}: {data['errors']}")
     return data
 
 
@@ -161,28 +169,79 @@ def get_movie(imdb_id: str, locale: Optional[str] = None) -> Optional[MovieDetai
     logger.debug("Fetched url %s", url)
     return movie
 
+def search_title(search_term: str, locale: Optional[str] = None, title_type: Optional[TitleFilter] = None) -> Optional[SearchResult]:
+    lang = _retrieve_url_lang(locale)
+    country_code = _get_country_code_from_locale(lang)
 
-@lru_cache(maxsize=128)
-def search_title(
-    title: str, locale: Optional[str] = None, title_type: Optional[TitleFilter] = None
-) -> Optional[SearchResult]:
-    """
-    Search for a movie by title and return a list of titles and names.
-
-    :param title: Title to search for.
-    :param locale: Optional locale string (e.g., 'en', 'es').
-    :param title_type: Optional filter(s) for media type. Must be a single TitleType enum member or a hashable tuple of TitleType members.
-    """
-    lang = f"{_retrieve_url_lang(locale)}/" if locale else ""
-    url = f"https://www.imdb.com/{lang}find?q={title}"
+    search_options_types = ""
     if title_type:
-        ttype_values = [tt.value for tt in (title_type if isinstance(title_type, tuple) else [title_type])]
-        url += f"&ttype={','.join(ttype_values)}"
+        tt_iter = title_type if isinstance(title_type, tuple) else (title_type,)
+        types = [title_type_search_type.get(tt) for tt in tt_iter if tt is not TitleType.Video]
+        search_options_types = ",".join(filter(None, types))
 
-    raw_json = request_json_url(url)
+    url = GRAPHQL_URL
 
-    result = parse_json_search(raw_json)
-    logger.debug("Search for '%s' returned %s titles", title, len(result.titles))
+    query_template = """query {
+  mainSearch(
+    first: 50
+    options: {
+      searchTerm: "__SEARCH_TERM__"
+      isExactMatch: false
+      type: [TITLE, NAME]
+      titleSearchOptions: { type: [__TYPES__] }
+    }
+  ) {
+    edges {
+      node {
+        entity {
+          ... on Title {
+            __typename
+            id
+            titleText { text }
+            canonicalUrl
+            originalTitleText { text }
+            releaseDate { year month day }
+            primaryImage { url }
+            titleType { id text categories { id text value } }
+            ratingsSummary { aggregateRating }
+            runtime { seconds }
+          }
+          ... on Name {
+            __typename
+            id
+            nameText { text }
+            professions {
+              profession { text }
+              professionCategory {
+                traits
+                text { text id }
+              }
+            }
+            knownForV2 {
+              credits {
+                title {
+                  id
+                  titleText { text }
+                  releaseYear { year }
+                }
+              }
+            }
+            canonicalUrl
+          }
+        }
+      }
+    }
+  }
+}"""
+
+    query = query_template.replace("__SEARCH_TERM__", search_term).replace("__TYPES__", search_options_types)
+    payload = {"query": query}
+    headers = {"Content-Type": "application/json", "x-imdb-user-country": country_code}
+
+    logger.info("Searching for '%s' using GraphQL API", search_term)
+    data = request_graphql_url(headers=headers, search_term=search_term, payload=payload, url=url)
+    result = parse_json_search(data)
+
     return result
 
 
@@ -466,7 +525,7 @@ def _get_extended_name_info(person_id) -> dict:
                 nameText {
                   text
                 }
-            
+
                 credits(first: 250
                 filter: {
             categories: [
@@ -495,7 +554,7 @@ def _get_extended_name_info(person_id) -> dict:
               "script_department"
               "producer"
               "stunts"
-              "editor"        
+              "editor"
               "stunt_coordinator"
               "special_effects"
               "assistant_director"
@@ -508,21 +567,21 @@ def _get_extended_name_info(person_id) -> dict:
               "production_designer"
               "casting_department"
               "director"
-              "composer"        
+              "composer"
               "archive_sound"
               "casting_director"
               "art_director"
             ]
           }
-                ) 
-               
+                )
+
                 {
                   edges {
                     node {
                       category {
                         id
                       }
-            
+
                       title {
                         id
                         ratingsSummary{aggregateRating}
@@ -546,7 +605,7 @@ def _get_extended_name_info(person_id) -> dict:
                       }
                     }
                   }
-            
+
                   pageInfo {
                     endCursor
                     hasNextPage
@@ -554,7 +613,7 @@ def _get_extended_name_info(person_id) -> dict:
                 }
               }
             }
-    
+
         """
         % person_id
     )

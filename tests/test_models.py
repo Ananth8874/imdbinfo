@@ -27,14 +27,42 @@ def test_cast_member_from_cast():
 
 
 def test_movieinfo_from_movie_search():
-    data = {
-        "titleId": "tt0133093",
-        "titleText": "The Matrix",
-        "originalTitleText" : "The Matrix",
-        "primaryImage": {"url": "http://example.com/matrix.jpg"},
-        "releaseYear": "1999",
-        "titleType": {"id":"movie"},
-    }
+    data =  {
+              "__typename": "Title",
+              "id": "tt0133093",
+              "titleText": {
+                "text": "The Matrix"
+              },
+              "canonicalUrl": "https://www.imdb.com/title/tt0133093/",
+              "originalTitleText": {
+                "text": "The Matrix"
+              },
+              "releaseDate": {
+                "year": 1999,
+                "month": 9,
+                "day": 11
+              },
+              "primaryImage": {
+                "url": "https://m.media-amazon.com/images/M/MV5BN2NmN2VhMTQtMDNiOS00NDlhLTliMjgtODE2ZTY0ODQyNDRhXkEyXkFqcGc@._V1_.jpg"
+              },
+              "titleType": {
+                "id": "movie",
+                "text": "Movie",
+                "categories": [
+                  {
+                    "id": "movie",
+                    "text": "Movie",
+                    "value": "movie"
+                  }
+                ]
+              },
+              "ratingsSummary": {
+                "aggregateRating": 8.7
+              },
+              "runtime": {
+                "seconds": 8160
+              }
+            }
     info = MovieBriefInfo.from_movie_search(data)
     assert info.title == "The Matrix"
     assert info.imdb_id == "0133093"
