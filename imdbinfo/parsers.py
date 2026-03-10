@@ -418,7 +418,7 @@ def parse_json_movie(raw_json) -> Optional[MovieDetail]:
     data["sound_mixes"] = pjmespatch(
         "props.pageProps.mainColumnData.technicalSpecifications.soundMixes.items[].text",
         raw_json,
-    )
+    ) or []
     data["processes"] = pjmespatch(
         "props.pageProps.mainColumnData.technicalSpecifications.processes.items[].process",
         raw_json,
@@ -438,7 +438,7 @@ def parse_json_movie(raw_json) -> Optional[MovieDetail]:
     data["colorations"] = pjmespatch(
         "props.pageProps.mainColumnData.technicalSpecifications.colorations.items[].text",
         raw_json,
-    )
+    ) or []
     data["cameras"] = pjmespatch(
         "props.pageProps.mainColumnData.technicalSpecifications.cameras.items[].camera",
         raw_json,
