@@ -54,8 +54,9 @@ logger = logging.getLogger(__name__)
 
 GRAPHQL_URL = "https://api.graphql.imdb.com/"
 
-#enable WAF handling by default, will be disabled if not needed after first request for performance
-WAF_ON=True
+# enable WAF handling by default, will be disabled if not needed after first request for performance
+WAF_ON = True
+
 
 class TitleType(Enum):
     """
@@ -63,12 +64,13 @@ class TitleType(Enum):
     The values correspond to the URL parameter used in search queries.
     """
 
-    Movies = "ft" # MOVIE
-    Series = "tv" #TV
-    Episodes = "ep" # TV_EPISODE
-    Shorts = "sh" # MOVIE
-    TvMovie = "tvm" # TV
-    Video = "v" #ALL
+    Movies = "ft"  # MOVIE
+    Series = "tv"  # TV
+    Episodes = "ep"  # TV_EPISODE
+    Shorts = "sh"  # MOVIE
+    TvMovie = "tvm"  # TV
+    Video = "v"  # ALL
+
 
 title_type_search_type = {
     TitleType.Movies: "MOVIE",
@@ -76,7 +78,7 @@ title_type_search_type = {
     TitleType.Episodes: "TV_EPISODE",
     TitleType.Shorts: "MOVIE",
     TitleType.TvMovie: "TV",
-    TitleType.Video: ""
+    TitleType.Video: "",
 }
 
 
@@ -87,12 +89,14 @@ USER_AGENTS_LIST = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 ]
 
+
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = str(imdb_id)
     num = int(re.sub(r"\D", "", imdb_id))
     lang = _retrieve_url_lang(locale)
     imdb_id = f"{num:07d}"
     return imdb_id, lang
+
 
 def get_cookies():
     """
@@ -106,6 +110,7 @@ def get_cookies():
         return {}
     WAF_ON = False
     return {}
+
 
 def request_json_url(url: str) -> Any:
     resp = request_handler(url)
@@ -169,14 +174,23 @@ def get_movie(imdb_id: str, locale: Optional[str] = None) -> Optional[MovieDetai
     logger.debug("Fetched url %s", url)
     return movie
 
-def search_title(search_term: str, locale: Optional[str] = None, title_type: Optional[TitleFilter] = None) -> Optional[SearchResult]:
+
+def search_title(
+    search_term: str,
+    locale: Optional[str] = None,
+    title_type: Optional[TitleFilter] = None,
+) -> Optional[SearchResult]:
     lang = _retrieve_url_lang(locale)
     country_code = _get_country_code_from_locale(lang)
 
     search_options_types = ""
     if title_type:
         tt_iter = title_type if isinstance(title_type, tuple) else (title_type,)
-        types = [title_type_search_type.get(tt) for tt in tt_iter if tt is not TitleType.Video]
+        types = [
+            title_type_search_type.get(tt)
+            for tt in tt_iter
+            if tt is not TitleType.Video
+        ]
         search_options_types = ",".join(filter(None, types))
 
     url = GRAPHQL_URL
@@ -234,12 +248,15 @@ def search_title(search_term: str, locale: Optional[str] = None, title_type: Opt
   }
 }"""
 
-    query = query_template.replace("__SEARCH_TERM__", search_term).replace("__TYPES__", search_options_types)
+    query = (query_template.replace("__SEARCH_TERM__", search_term)
+            .replace( "__TYPES__", search_options_types))
     payload = {"query": query}
     headers = {"Content-Type": "application/json", "x-imdb-user-country": country_code}
 
     logger.info("Searching for '%s' using GraphQL API", search_term)
-    data = request_graphql_url(headers=headers, search_term=search_term, payload=payload, url=url)
+    data = request_graphql_url(
+        headers=headers, search_term=search_term, payload=payload, url=url
+    )
     result = parse_json_search(data)
 
     return result
@@ -361,7 +378,6 @@ def get_reviews(imdb_id: str) -> List[Dict]:
     reviews_list = parse_json_reviews(raw_json)
     logger.debug("Fetched %d reviews for title %s", len(reviews_list), imdb_id)
     return reviews_list
-
 
 
 def get_parental_guide(imdb_id: str) -> Dict:

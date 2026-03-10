@@ -29,7 +29,7 @@ for p in person_results.names:
         print(f"IMDb URL: {person.url}")
 
 movie = get_movie("0133093")
-for p in movie.categories['cast']:
+for p in movie.categories["cast"]:
     print(f"{p.name} - {p.job} ({p.id})")
     person = get_name(p.id)
     if person:
