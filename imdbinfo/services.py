@@ -28,8 +28,7 @@ import niquests
 import json
 from lxml import html
 from enum import Enum
-from .locale import _retrieve_url_lang
-
+from .locale import _retrieve_url_lang, _get_country_code_from_locale
 
 from .models import (
     SearchResult,
@@ -50,6 +49,8 @@ from .parsers import (
     parse_json_filmography, parse_json_parental_guide, parse_json_search_new,
 )
 
+logger = logging.getLogger(__name__)
+
 GRAPHQL_URL = "https://api.graphql.imdb.com/"
 
 #enable WAF handling by default, will be disabled if not needed after first request for performance
@@ -68,16 +69,22 @@ class TitleType(Enum):
     TvMovie = "tvm" # TV
     Video = "v" #ALL
 
+title_type_search_type = {
+    TitleType.Movies: "MOVIE",
+    TitleType.Series: "TV",
+    TitleType.Episodes: "TV_EPISODE",
+    TitleType.Shorts: "MOVIE",
+    TitleType.TvMovie: "TV",
+    TitleType.Video: ""
+}
+
 
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
-
-logger = logging.getLogger(__name__)
 
 # Users can override this by setting: imdbinfo.services.USER_AGENTS_LIST = [ "your-user-agent", ...]
 USER_AGENTS_LIST = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 ]
-
 
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = str(imdb_id)
@@ -161,88 +168,60 @@ def get_movie(imdb_id: str, locale: Optional[str] = None) -> Optional[MovieDetai
     logger.debug("Fetched url %s", url)
     return movie
 
-def search_title_name(search_term: str, locale: Optional[str] = None, title_type: Optional[TitleFilter] = None) -> Optional[SearchResult]:
-    lang = f"{_retrieve_url_lang(locale)}/" if locale else ""
+def search_title(search_term: str, locale: Optional[str] = None, title_type: Optional[TitleFilter] = None) -> Optional[SearchResult]:
+    lang = _retrieve_url_lang(locale)
+    country_code = _get_country_code_from_locale(lang)
+
+    search_options_types = ""
+    if title_type:
+        tt_iter = title_type if isinstance(title_type, tuple) else (title_type,)
+        types = [title_type_search_type.get(tt) for tt in tt_iter if tt is not TitleType.Video]
+        search_options_types = ",".join(filter(None, types))
+
     url = GRAPHQL_URL
-    query = (
-    """
-    query {
-  # Get the top 50 movie titles that most closely match the search term .
+
+    query_template = """query {
   mainSearch(
     first: 50
     options: {
-      searchTerm: "%s"
+      searchTerm: "__SEARCH_TERM__"
       isExactMatch: false
       type: [TITLE, NAME]
-      # titleSearchOptions: { type: MOVIE }
+      titleSearchOptions: { type: [__TYPES__] }
     }
   ) {
     edges {
       node {
         entity {
-          # For returned Titles, get me the id and title text
           ... on Title {
-          __typename
+            __typename
             id
-            titleText {
-              text
-            }
+            titleText { text }
             canonicalUrl
-            originalTitleText {
-              text
-            }
-            releaseDate {
-              year
-              month
-              day
-            }
-            primaryImage {
-              url
-            }
-            titleType {
-              id
-              text
-              categories {
-                id
-                text
-                value
-              }
-            }
-            ratingsSummary {
-              aggregateRating
-            }
-            runtime {
-              seconds
-            }
+            originalTitleText { text }
+            releaseDate { year month day }
+            primaryImage { url }
+            titleType { id text categories { id text value } }
+            ratingsSummary { aggregateRating }
+            runtime { seconds }
           }
-          # For returned Names,
           ... on Name {
-          __typename
+            __typename
             id
-            nameText {
-              text
-            }
+            nameText { text }
             professions {
-              profession {text}
+              profession { text }
               professionCategory {
                 traits
-                text {
-                  text
-                  id
-                }
+                text { text id }
               }
             }
             knownForV2 {
               credits {
-                # id
                 title {
                   id
-                  titleText {
-                    text
-                  }
-                  releaseYear {
-                    year
-                  }
+                  titleText { text }
+                  releaseYear { year }
                 }
               }
             }
@@ -252,20 +231,21 @@ def search_title_name(search_term: str, locale: Optional[str] = None, title_type
       }
     }
   }
-}
+}"""
 
-    """
-    ) % search_term
+    query = query_template.replace("__SEARCH_TERM__", search_term).replace("__TYPES__", search_options_types)
     payload = {"query": query}
+    headers = {"Content-Type": "application/json", "x-imdb-user-country": country_code}
+
     logger.info("Searching for '%s' using GraphQL API", search_term)
-    data = request_graphql_url(headers={"Content-Type": "application/json"}, search_term=search_term, payload=payload, url=url)
+    data = request_graphql_url(headers=headers, search_term=search_term, payload=payload, url=url)
     result = parse_json_search_new(data)
 
     return result
 
 
 @lru_cache(maxsize=128)
-def search_title(
+def search_title_old(
     title: str, locale: Optional[str] = None, title_type: Optional[TitleFilter] = None
 ) -> Optional[SearchResult]:
     """
