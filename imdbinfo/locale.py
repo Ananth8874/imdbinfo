@@ -41,7 +41,19 @@ _configured_locale = None
 
 def set_locale(locale: str):
     global _configured_locale
-    _configured_locale = locale
+    # accept only a single supported locale string
+    if not isinstance(locale, str):
+        logger.warning("Invalid locale type: %r. Locale must be a string. Falling back to default '%s'.", locale, DEFAULT_LOCALE)
+        _configured_locale = DEFAULT_LOCALE
+        return
+
+    l = locale.strip()
+    if l not in SUPPORTED_LOCALES:
+        logger.warning("Locale '%s' is not supported. Falling back to default '%s'.", l, DEFAULT_LOCALE)
+        _configured_locale = DEFAULT_LOCALE
+        return
+
+    _configured_locale = l
 
 
 def _normalize_locale(lcl: str):
@@ -63,7 +75,7 @@ def _retrieve_url_lang(locale=None):
     return "" if lcl == DEFAULT_LOCALE else lcl
 
 
-def _get_country_code_from_locale(locale=None):
+def _get_country_code_from_lang_locale(locale=None):
     lcl = locale or _configured_locale or DEFAULT_LOCALE
     lcl = _normalize_locale(lcl)
     return LOCALE_TO_COUNTRY_CODE.get(lcl, LOCALE_TO_COUNTRY_CODE[DEFAULT_LOCALE])
