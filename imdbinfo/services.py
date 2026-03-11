@@ -28,7 +28,7 @@ import niquests
 import json
 from lxml import html
 from enum import Enum
-from .locale import _retrieve_url_lang, _get_country_code_from_locale
+from .locale import _retrieve_url_lang, _get_country_code_from_lang_locale
 
 from .models import (
     SearchResult,
@@ -181,7 +181,7 @@ def search_title(
     title_type: Optional[TitleFilter] = None,
 ) -> Optional[SearchResult]:
     lang = _retrieve_url_lang(locale)
-    country_code = _get_country_code_from_locale(lang)
+    country_code = _get_country_code_from_lang_locale(lang)
 
     search_options_types = ""
     if title_type:
@@ -319,9 +319,9 @@ def get_episodes(
     return get_season_episodes(imdb_id, season, locale)
 
 
-def get_akas(imdb_id: str) -> Union[AkasData, list]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_akas(imdb_id: str, locale: Optional[str] = None) -> Union[AkasData, list]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No AKAs found for title %s", imdb_id)
         return []
@@ -330,7 +330,7 @@ def get_akas(imdb_id: str) -> Union[AkasData, list]:
     return akas
 
 
-def get_all_interests(imdb_id: str):
+def get_all_interests(imdb_id: str, locale: Optional[str] = None):
     """
         Fetch all 'interests' for a title using the provided IMDb ID.
 
@@ -342,8 +342,8 @@ def get_all_interests(imdb_id: str):
     more resource-intensive than standard API calls. Use this function only if you require interests
     beyond what is available in movie.genres, as it can impact performance.
     """
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No interests found for title %s", imdb_id)
         return []
@@ -358,9 +358,9 @@ def get_all_interests(imdb_id: str):
     return interests
 
 
-def get_trivia(imdb_id: str) -> List[Dict]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_trivia(imdb_id: str, locale: Optional[str] = None) -> List[Dict]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No trivia found for title %s", imdb_id)
         return []
@@ -369,9 +369,9 @@ def get_trivia(imdb_id: str) -> List[Dict]:
     return trivia_list
 
 
-def get_reviews(imdb_id: str) -> List[Dict]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_reviews(imdb_id: str, locale: Optional[str] = None) -> List[Dict]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No reviews found for title %s", imdb_id)
         return []
@@ -380,9 +380,9 @@ def get_reviews(imdb_id: str) -> List[Dict]:
     return reviews_list
 
 
-def get_parental_guide(imdb_id: str) -> Dict:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_parental_guide(imdb_id: str, locale: Optional[str] = None) -> Dict:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No parental guide found for title %s", imdb_id)
         return {}
@@ -391,12 +391,12 @@ def get_parental_guide(imdb_id: str) -> Dict:
     return parental_guide
 
 
-def get_filmography(imdb_id) -> dict:
+def get_filmography(imdb_id,locale: Optional[str] = None) -> dict:
     """
     Fetch full filmography for a person using the provided IMDb ID.
     """
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_name_info(imdb_id)
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_name_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No full_credit found for name %s", imdb_id)
         return {}
@@ -406,15 +406,17 @@ def get_filmography(imdb_id) -> dict:
 
 
 @lru_cache(maxsize=128)
-def _get_extended_title_info(imdb_id) -> dict:
+def _get_extended_title_info(imdb_id, locale=None) -> dict:
     """
     Fetch extended info using IMDb's GraphQL API:
     including akas, trivia, reviews, interests, and parental guide.
     """
     imdbId = "tt" + imdb_id
+    country = _get_country_code_from_lang_locale(locale)
     url = GRAPHQL_URL
     headers = {
         "Content-Type": "application/json",
+        "x-imdb-user-country": country,
     }
     query = (
         """
@@ -528,11 +530,12 @@ def _get_extended_title_info(imdb_id) -> dict:
     return raw_json
 
 
-def _get_extended_name_info(person_id) -> dict:
+def _get_extended_name_info(person_id,  locale=None) -> dict:
     """
     Fetch extended person info using IMDb's GraphQL API.
     """
     person_id = "nm" + person_id
+    country = _get_country_code_from_lang_locale(locale)
 
     query = (
         """
@@ -636,6 +639,7 @@ def _get_extended_name_info(person_id) -> dict:
     url = GRAPHQL_URL
     headers = {
         "Content-Type": "application/json",
+            "x-imdb-user-country": country,
     }
     payload = {"query": query}
     logger.info("Fetching person %s from GraphQL API", person_id)
