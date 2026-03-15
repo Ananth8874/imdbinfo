@@ -174,7 +174,7 @@ def get_movie(imdb_id: str, locale: Optional[str] = None) -> Optional[MovieDetai
     logger.debug("Fetched url %s", url)
     return movie
 
-
+@lru_cache(maxsize=128)
 def search_title(
     search_term: str,
     locale: Optional[str] = None,
