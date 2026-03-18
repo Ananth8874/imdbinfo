@@ -18,7 +18,6 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-import random
 import re
 from typing import Optional, Dict, Union, List, Tuple, Any
 from functools import lru_cache
@@ -29,6 +28,7 @@ import json
 from lxml import html
 from enum import Enum
 from .locale import _retrieve_url_lang, _get_country_code_from_lang_locale
+from .user_agents_list import generate_user_agents_list, get_random_user_agent
 
 from .models import (
     SearchResult,
@@ -84,10 +84,9 @@ title_type_search_type = {
 
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
 
-# Users can override this by setting: imdbinfo.services.USER_AGENTS_LIST = [ "your-user-agent", ...]
-USER_AGENTS_LIST = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-]
+# Users can override this by setting: imdbinfo.services.USER_AGENTS_LIST = ["your-user-agent", ...]
+_DEFAULT_USER_AGENTS_LIST = generate_user_agents_list(size=8)
+USER_AGENTS_LIST = _DEFAULT_USER_AGENTS_LIST.copy()
 
 
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
@@ -133,7 +132,11 @@ def request_json_url(url: str) -> Any:
 
 
 def request_handler(url: str) -> Any:
-    user_agent = random.choice(USER_AGENTS_LIST)
+    # Keep backward compatibility for user overrides while generating a fresh UA by default.
+    if USER_AGENTS_LIST != _DEFAULT_USER_AGENTS_LIST:
+        user_agent = get_random_user_agent(USER_AGENTS_LIST)
+    else:
+        user_agent = get_random_user_agent()
     logger.debug("Using User-Agent: %s", user_agent)
     cookies = get_cookies()
     # # if cookies is an empty dict, no cookies will be sent and normal request will be used (WAF is off)
