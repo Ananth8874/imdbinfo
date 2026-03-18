@@ -52,10 +52,13 @@ def _none_to_string_in_list(result):
     """
     given a list of lists , if a None is found replace with '' recursively
     """
-    return [
+    if result is None:
+        return []
+    r = [
         [str(item) if item is not None else "" for item in sublist]
         for sublist in result
     ]
+    return r
 
 
 def _join(result, separator=" "):

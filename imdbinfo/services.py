@@ -28,8 +28,7 @@ import niquests
 import json
 from lxml import html
 from enum import Enum
-from .locale import _retrieve_url_lang
-
+from .locale import _retrieve_url_lang, _get_country_code_from_lang_locale
 
 from .models import (
     SearchResult,
@@ -47,11 +46,17 @@ from .parsers import (
     parse_json_akas,
     parse_json_trivia,
     parse_json_reviews,
-    parse_json_filmography, parse_json_parental_guide,
+    parse_json_filmography,
+    parse_json_parental_guide,
 )
 
-#enable WAF handling by default, will be disabled if not needed after first request for performance
-WAF_ON=True
+logger = logging.getLogger(__name__)
+
+GRAPHQL_URL = "https://api.graphql.imdb.com/"
+
+# enable WAF handling by default, will be disabled if not needed after first request for performance
+WAF_ON = True
+
 
 class TitleType(Enum):
     """
@@ -59,17 +64,25 @@ class TitleType(Enum):
     The values correspond to the URL parameter used in search queries.
     """
 
-    Movies = "ft"
-    Series = "tv"
-    Episodes = "ep"
-    Shorts = "sh"
-    TvMovie = "tvm"
-    Video = "v"
+    Movies = "ft"  # MOVIE
+    Series = "tv"  # TV
+    Episodes = "ep"  # TV_EPISODE
+    Shorts = "sh"  # MOVIE
+    TvMovie = "tvm"  # TV
+    Video = "v"  # ALL
+
+
+title_type_search_type = {
+    TitleType.Movies: "MOVIE",
+    TitleType.Series: "TV",
+    TitleType.Episodes: "TV_EPISODE",
+    TitleType.Shorts: "MOVIE",
+    TitleType.TvMovie: "TV",
+    TitleType.Video: "",
+}
 
 
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
-
-logger = logging.getLogger(__name__)
 
 # Users can override this by setting: imdbinfo.services.USER_AGENTS_LIST = [ "your-user-agent", ...]
 USER_AGENTS_LIST = [
@@ -84,6 +97,7 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = f"{num:07d}"
     return imdb_id, lang
 
+
 def get_cookies():
     """
     Try to get AWS WAF token cookies if needed.
@@ -96,6 +110,7 @@ def get_cookies():
         return {}
     WAF_ON = False
     return {}
+
 
 def request_json_url(url: str) -> Any:
     resp = request_handler(url)
@@ -131,18 +146,18 @@ def request_handler(url: str) -> Any:
     return resp
 
 
-def request_graphql_url(headers, imdbId, payload, url) -> Any:
+def request_graphql_url(headers, search_term, payload, url) -> Any:
     resp = niquests.post(url, headers=headers, json=payload)
     if resp.status_code != 200:
         logger.error("GraphQL request failed: %s", resp.status_code)
-        error_msg = f"GraphQL request failed for {imdbId}: HTTP {resp.status_code}"
+        error_msg = f"GraphQL request failed for {search_term}: HTTP {resp.status_code}"
         if resp.text:
             error_msg += f" - {resp.text[:200]}"
         raise Exception(error_msg)
     data = resp.json()
     if "errors" in data:
         logger.error("GraphQL error: %s", data["errors"])
-        raise Exception(f"GraphQL error for {imdbId}: {data['errors']}")
+        raise Exception(f"GraphQL error for {search_term}: {data['errors']}")
     return data
 
 
@@ -159,42 +174,91 @@ def get_movie(imdb_id: str, locale: Optional[str] = None) -> Optional[MovieDetai
     logger.debug("Fetched url %s", url)
     return movie
 
-
 @lru_cache(maxsize=128)
 def search_title(
-    title: str, locale: Optional[str] = None, title_type: Optional[TitleFilter] = None
+    search_term: str,
+    locale: Optional[str] = None,
+    title_type: Optional[TitleFilter] = None,
 ) -> Optional[SearchResult]:
-    """
-    Search for a movie by title and return a list of titles and names.
+    lang = _retrieve_url_lang(locale)
+    country_code = _get_country_code_from_lang_locale(lang)
 
-    :param title: Title to search for.
-    :param locale: Optional locale string (e.g., 'en', 'es').
-    :param title_type: Optional filter(s) for media type. Must be a single TitleType enum member or a hashable tuple of TitleType members.
-    """
-    lang = f"{_retrieve_url_lang(locale)}/" if locale else ""
-    url = f"https://www.imdb.com/{lang}find?q={title}&s=tt"
+    search_options_types = ""
+    if title_type:
+        tt_iter = title_type if isinstance(title_type, tuple) else (title_type,)
+        types = [
+            title_type_search_type.get(tt)
+            for tt in tt_iter
+            if tt is not TitleType.Video
+        ]
+        search_options_types = ",".join(filter(None, types))
 
-    if not title_type:
-        type_log = "All"
-    else:
-        if isinstance(title_type, tuple):
-            types_list = title_type
-        else:
-            types_list = [title_type]
+    url = GRAPHQL_URL
 
-        ttype_values = [tt.value for tt in types_list]
-        ttype_names = [tt.name for tt in types_list]
+    query_template = """query {
+  mainSearch(
+    first: 50
+    options: {
+      searchTerm: "__SEARCH_TERM__"
+      isExactMatch: false
+      type: [TITLE, NAME]
+      titleSearchOptions: { type: [__TYPES__] }
+    }
+  ) {
+    edges {
+      node {
+        entity {
+          ... on Title {
+            __typename
+            id
+            titleText { text }
+            canonicalUrl
+            originalTitleText { text }
+            releaseDate { year month day }
+            primaryImage { url }
+            titleType { id text categories { id text value } }
+            ratingsSummary { aggregateRating }
+            runtime { seconds }
+          }
+          ... on Name {
+            __typename
+            id
+            nameText { text }
+            professions {
+              profession { text }
+              professionCategory {
+                traits
+                text { text id }
+              }
+            }
+            knownForV2 {
+              credits {
+                title {
+                  id
+                  titleText { text }
+                  releaseYear { year }
+                }
+              }
+            }
+            canonicalUrl
+          }
+        }
+      }
+    }
+  }
+}"""
 
-        ttype_value = ",".join(ttype_values)
-        type_log = ", ".join(ttype_names)
+    query = (query_template.replace("__SEARCH_TERM__", search_term)
+            .replace( "__TYPES__", search_options_types))
+    payload = {"query": query}
+    headers = {"Content-Type": "application/json", "x-imdb-user-country": country_code}
 
-        url += f"&ttype={ttype_value}"
+    logger.info("Searching for '%s' using GraphQL API", search_term)
+    data = request_graphql_url(
+        headers=headers, search_term=search_term, payload=payload, url=url
+    )
+    result = parse_json_search(data)
 
-    logger.info("Searching for title '%s' [Type: %s]", title, type_log)
-    raw_json = request_json_url(url)
-
-    result = parse_json_search(raw_json)
-    logger.debug("Search for '%s' returned %s titles", title, len(result.titles))
     return result
 
 
@@ -255,9 +319,9 @@ def get_episodes(
     return get_season_episodes(imdb_id, season, locale)
 
 
-def get_akas(imdb_id: str) -> Union[AkasData, list]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_akas(imdb_id: str, locale: Optional[str] = None) -> Union[AkasData, list]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No AKAs found for title %s", imdb_id)
         return []
@@ -266,7 +330,7 @@ def get_akas(imdb_id: str) -> Union[AkasData, list]:
     return akas
 
 
-def get_all_interests(imdb_id: str):
+def get_all_interests(imdb_id: str, locale: Optional[str] = None):
     """
         Fetch all 'interests' for a title using the provided IMDb ID.
 
@@ -278,8 +342,8 @@ def get_all_interests(imdb_id: str):
     more resource-intensive than standard API calls. Use this function only if you require interests
     beyond what is available in movie.genres, as it can impact performance.
     """
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No interests found for title %s", imdb_id)
         return []
@@ -294,9 +358,9 @@ def get_all_interests(imdb_id: str):
     return interests
 
 
-def get_trivia(imdb_id: str) -> List[Dict]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_trivia(imdb_id: str, locale: Optional[str] = None) -> List[Dict]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No trivia found for title %s", imdb_id)
         return []
@@ -305,9 +369,9 @@ def get_trivia(imdb_id: str) -> List[Dict]:
     return trivia_list
 
 
-def get_reviews(imdb_id: str) -> List[Dict]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_reviews(imdb_id: str, locale: Optional[str] = None) -> List[Dict]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No reviews found for title %s", imdb_id)
         return []
@@ -316,10 +380,9 @@ def get_reviews(imdb_id: str) -> List[Dict]:
     return reviews_list
 
 
-
-def get_parental_guide(imdb_id: str) -> Dict:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_parental_guide(imdb_id: str, locale: Optional[str] = None) -> Dict:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No parental guide found for title %s", imdb_id)
         return {}
@@ -328,16 +391,32 @@ def get_parental_guide(imdb_id: str) -> Dict:
     return parental_guide
 
 
+def get_filmography(imdb_id,locale: Optional[str] = None) -> dict:
+    """
+    Fetch full filmography for a person using the provided IMDb ID.
+    """
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_name_info(imdb_id, lang)
+    if not raw_json:
+        logger.warning("No full_credit found for name %s", imdb_id)
+        return {}
+    full_credits_list = parse_json_filmography(raw_json)
+    logger.debug("Fetched full_credits for name %s", imdb_id)
+    return full_credits_list
+
+
 @lru_cache(maxsize=128)
-def _get_extended_title_info(imdb_id) -> dict:
+def _get_extended_title_info(imdb_id, locale=None) -> dict:
     """
     Fetch extended info using IMDb's GraphQL API:
     including akas, trivia, reviews, interests, and parental guide.
     """
     imdbId = "tt" + imdb_id
-    url = "https://api.graphql.imdb.com/"
+    country = _get_country_code_from_lang_locale(locale)
+    url = GRAPHQL_URL
     headers = {
         "Content-Type": "application/json",
+        "x-imdb-user-country": country,
     }
     query = (
         """
@@ -451,25 +530,12 @@ def _get_extended_title_info(imdb_id) -> dict:
     return raw_json
 
 
-def get_filmography(imdb_id) -> dict:
-    """
-    Fetch full filmography for a person using the provided IMDb ID.
-    """
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_name_info(imdb_id)
-    if not raw_json:
-        logger.warning("No full_credit found for name %s", imdb_id)
-        return {}
-    full_credits_list = parse_json_filmography(raw_json)
-    logger.debug("Fetched full_credits for name %s", imdb_id)
-    return full_credits_list
-
-
-def _get_extended_name_info(person_id) -> dict:
+def _get_extended_name_info(person_id,  locale=None) -> dict:
     """
     Fetch extended person info using IMDb's GraphQL API.
     """
     person_id = "nm" + person_id
+    country = _get_country_code_from_lang_locale(locale)
 
     query = (
         """
@@ -478,7 +544,7 @@ def _get_extended_name_info(person_id) -> dict:
                 nameText {
                   text
                 }
-            
+
                 credits(first: 250
                 filter: {
             categories: [
@@ -507,7 +573,7 @@ def _get_extended_name_info(person_id) -> dict:
               "script_department"
               "producer"
               "stunts"
-              "editor"        
+              "editor"
               "stunt_coordinator"
               "special_effects"
               "assistant_director"
@@ -520,21 +586,21 @@ def _get_extended_name_info(person_id) -> dict:
               "production_designer"
               "casting_department"
               "director"
-              "composer"        
+              "composer"
               "archive_sound"
               "casting_director"
               "art_director"
             ]
           }
-                ) 
-               
+                )
+
                 {
                   edges {
                     node {
                       category {
                         id
                       }
-            
+
                       title {
                         id
                         ratingsSummary{aggregateRating}
@@ -558,7 +624,7 @@ def _get_extended_name_info(person_id) -> dict:
                       }
                     }
                   }
-            
+
                   pageInfo {
                     endCursor
                     hasNextPage
@@ -566,13 +632,14 @@ def _get_extended_name_info(person_id) -> dict:
                 }
               }
             }
-    
+
         """
         % person_id
     )
-    url = "https://api.graphql.imdb.com/"
+    url = GRAPHQL_URL
     headers = {
         "Content-Type": "application/json",
+            "x-imdb-user-country": country,
     }
     payload = {"query": query}
     logger.info("Fetching person %s from GraphQL API", person_id)

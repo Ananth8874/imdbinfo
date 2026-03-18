@@ -37,6 +37,3 @@ def test_parse_awards_with_partial_prestigious_info_handles_missing_fields():
     assert aw.prestigious_award.get("wins") == 0
     assert aw.prestigious_award.get("nominations") == 0
     assert aw.prestigious_award.get("name") == ""
-
-
-
