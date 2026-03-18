@@ -23,115 +23,11 @@ def _make_mock_get(captured_headers: dict):
 
 
 # ---------------------------------------------------------------------------
-# Basic existence
+# UA engine — request_handler always generates a fresh UA
 # ---------------------------------------------------------------------------
 
-def test_user_agent_is_defined():
-    """Test that USER_AGENTS_LIST module variable is defined."""
-    assert hasattr(services, "USER_AGENTS_LIST")
-    assert isinstance(services.USER_AGENTS_LIST, list)
-    assert len(services.USER_AGENTS_LIST) > 0
-
-
-# ---------------------------------------------------------------------------
-# Override mechanism — correctness & state safety
-# ---------------------------------------------------------------------------
-
-def test_user_agent_can_be_overridden(monkeypatch):
-    """USER_AGENTS_LIST override is respected — uses monkeypatch for safe cleanup."""
-    custom_ua = "CustomUserAgent/1.0"
-    # Use monkeypatch so the list is always restored, even on test failure
-    monkeypatch.setattr(services, "USER_AGENTS_LIST", [custom_ua])
-
-    captured_headers = {}
-    monkeypatch.setattr(services.niquests, "get", _make_mock_get(captured_headers))
-
-    services.get_movie.cache_clear()
-    try:
-        services.get_movie("tt0133093")
-    except Exception:
-        pass  # only care about captured headers
-
-    assert captured_headers.get("User-Agent") == custom_ua
-
-
-def test_override_single_item_always_uses_that_ua(monkeypatch):
-    """Single-item override list must always produce exactly that UA string."""
-    only_ua = "OnlyAgent/9.9"
-    monkeypatch.setattr(services, "USER_AGENTS_LIST", [only_ua])
-
-    seen = set()
-    captured_headers = {}
-    monkeypatch.setattr(services.niquests, "get", _make_mock_get(captured_headers))
-
-    for _ in range(10):
-        services.get_movie.cache_clear()
-        captured_headers.clear()
-        try:
-            services.get_movie("tt0133093")
-        except Exception:
-            pass
-        ua = captured_headers.get("User-Agent")
-        if ua:
-            seen.add(ua)
-
-    assert seen == {only_ua}, f"Expected only '{only_ua}', got {seen}"
-
-
-def test_override_multi_item_uses_only_list_values(monkeypatch):
-    """Multi-item override list must only produce UAs from that list."""
-    custom_list = ["AgentA/1.0", "AgentB/2.0", "AgentC/3.0"]
-    monkeypatch.setattr(services, "USER_AGENTS_LIST", custom_list)
-
-    seen = set()
-    captured_headers = {}
-    monkeypatch.setattr(services.niquests, "get", _make_mock_get(captured_headers))
-
-    for _ in range(20):
-        services.get_movie.cache_clear()
-        captured_headers.clear()
-        try:
-            services.get_movie("tt0133093")
-        except Exception:
-            pass
-        ua = captured_headers.get("User-Agent")
-        if ua:
-            seen.add(ua)
-
-    assert seen.issubset(set(custom_list)), (
-        f"Got UAs outside the custom list: {seen - set(custom_list)}"
-    )
-
-
-def test_default_list_not_polluted_after_override(monkeypatch):
-    """After an override via monkeypatch, the default list must be intact."""
-    original_list = list(services.USER_AGENTS_LIST)
-    default_list = list(services._DEFAULT_USER_AGENTS_LIST)
-
-    monkeypatch.setattr(services, "USER_AGENTS_LIST", ["TempAgent/1.0"])
-    # monkeypatch restores automatically — simulate end-of-test restore
-    monkeypatch.undo()
-
-    assert services.USER_AGENTS_LIST == original_list, (
-        "USER_AGENTS_LIST was not restored after override"
-    )
-    assert services._DEFAULT_USER_AGENTS_LIST == default_list, (
-        "_DEFAULT_USER_AGENTS_LIST must never be mutated"
-    )
-
-
-def test_override_does_not_affect_default_user_agents_list(monkeypatch):
-    """Overriding USER_AGENTS_LIST must not mutate _DEFAULT_USER_AGENTS_LIST."""
-    snapshot = list(services._DEFAULT_USER_AGENTS_LIST)
-    monkeypatch.setattr(services, "USER_AGENTS_LIST", ["InjectedAgent/1.0"])
-    assert services._DEFAULT_USER_AGENTS_LIST == snapshot
-
-
-def test_request_handler_default_generates_fresh_ua(monkeypatch):
-    """Without an override, request_handler must generate a fresh UA (not from default list)."""
-    # Ensure USER_AGENTS_LIST equals the default so the 'else' branch is taken
-    monkeypatch.setattr(services, "USER_AGENTS_LIST", list(services._DEFAULT_USER_AGENTS_LIST))
-
+def test_request_handler_generates_mozilla_ua(monkeypatch):
+    """request_handler must always send a Mozilla/5.0-prefixed UA string."""
     generated_uas = set()
 
     def mock_get(url, headers=None, **kwargs):
@@ -155,9 +51,44 @@ def test_request_handler_default_generates_fresh_ua(monkeypatch):
         except Exception:
             pass
 
-    # All generated UAs must start with Mozilla/5.0 (engine-generated strings)
+    assert generated_uas, "No User-Agent was captured"
     for ua in generated_uas:
         assert ua.startswith("Mozilla/5.0"), f"Unexpected UA format: {ua}"
+
+
+def test_request_handler_varies_ua_across_requests(monkeypatch):
+    """Each request should be able to produce a different UA (engine randomness)."""
+    captured = []
+
+    def mock_get(url, headers=None, **kwargs):
+        if headers and "User-Agent" in headers:
+            captured.append(headers["User-Agent"])
+        return SimpleNamespace(
+            status_code=200,
+            content=(
+                b'<html><script id="__NEXT_DATA__">'
+                b'{"props":{"pageProps":{"aboveTheFoldData":{"id":"tt0133093"}}}}'
+                b'</script></html>'
+            ),
+        )
+
+    monkeypatch.setattr(services.niquests, "get", mock_get)
+
+    for _ in range(30):
+        services.get_movie.cache_clear()
+        try:
+            services.get_movie("tt0133093")
+        except Exception:
+            pass
+
+    assert len(set(captured)) > 1, "UA never varied across 30 requests"
+
+
+def test_user_agents_list_not_exposed_on_services():
+    """USER_AGENTS_LIST must no longer be a public attribute of services."""
+    assert not hasattr(services, "USER_AGENTS_LIST"), (
+        "USER_AGENTS_LIST should not be exposed on the services module"
+    )
 
 
 def test_error_message_includes_status_code(monkeypatch):

@@ -28,7 +28,7 @@ import json
 from lxml import html
 from enum import Enum
 from .locale import _retrieve_url_lang, _get_country_code_from_lang_locale
-from .user_agents_list import generate_user_agents_list, get_random_user_agent
+from .user_agents_list import get_random_user_agent
 
 from .models import (
     SearchResult,
@@ -84,9 +84,6 @@ title_type_search_type = {
 
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
 
-# Users can override this by setting: imdbinfo.services.USER_AGENTS_LIST = ["your-user-agent", ...]
-_DEFAULT_USER_AGENTS_LIST = generate_user_agents_list(size=8)
-USER_AGENTS_LIST = _DEFAULT_USER_AGENTS_LIST.copy()
 
 
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
@@ -132,11 +129,7 @@ def request_json_url(url: str) -> Any:
 
 
 def request_handler(url: str) -> Any:
-    # Keep backward compatibility for user overrides while generating a fresh UA by default.
-    if USER_AGENTS_LIST != _DEFAULT_USER_AGENTS_LIST:
-        user_agent = get_random_user_agent(USER_AGENTS_LIST)
-    else:
-        user_agent = get_random_user_agent()
+    user_agent = get_random_user_agent()
     logger.debug("Using User-Agent: %s", user_agent)
     cookies = get_cookies()
     # # if cookies is an empty dict, no cookies will be sent and normal request will be used (WAF is off)
