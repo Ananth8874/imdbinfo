@@ -1,3 +1,4 @@
+import imdbinfo
 from imdbinfo import search_title, get_movie
 
 import logging
@@ -5,7 +6,7 @@ import logging
 from imdbinfo.services import search_title
 
 logging.basicConfig(level=logging.WARNING)
-
+imdbinfo.services.USER_AGENTS_LIST = ["your-user-agent", "another-user-agent"]
 # Example 1: Search title/name and print the results
 title_query = "little house on the prairie"
 results = search_title(title_query)
