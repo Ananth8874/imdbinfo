@@ -6,9 +6,9 @@ logging.basicConfig(level=logging.WARNING)
 
 # List of movie IMDb IDs with comments for maintainability
 MOVIE_IDS = [
-    "tt1490017",   # Frozen (2013)
-    "tt0133093",   # The Matrix (1999)
-    "tt2347569",   # Pacific Rim (2013)
+    "tt1490017",  # Frozen (2013)
+    "tt0133093",  # The Matrix (1999)
+    "tt2347569",  # Pacific Rim (2013)
     "tt31184028",  # Dune: Part Two (2024)
     "tt1745960",  # Top Gun: Maverick (2022)
 ]

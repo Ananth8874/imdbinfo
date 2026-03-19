@@ -5,9 +5,11 @@ from imdbinfo.models import ParentalGuideList
 
 SAMPLE_DIR = os.path.join(os.path.dirname(__file__), "sample_json_source")
 
+
 def load_sample(filename):
     with open(os.path.join(SAMPLE_DIR, filename), encoding="utf-8") as f:
         return json.load(f)
+
 
 def test_parse_json_movie():
     raw_json = load_sample("sample_resource.json")
@@ -59,7 +61,7 @@ def test_parse_json_movie():
     assert "cast" in movie.categories
     assert "producer" in movie.categories
 
-    #cast
+    # cast
     assert "cast" in movie.categories
     assert isinstance(movie.categories["cast"], list)
     assert len(movie.categories["cast"]) >= 4
@@ -81,14 +83,13 @@ def test_parse_json_movie():
     assert "Trinity" in cast[2].characters
     assert cast[2].picture_url.startswith("https://m.media-amazon.com/images/")
 
-
-
     # Production
     assert "Warner Bros." in movie.production
 
     # Summaries and synopses
     assert any("Thomas A. Anderson" in s for s in movie.summaries)
     assert any("Neo" in s for s in movie.synopses)
+
 
 def test_parse_json_search():
     raw_json = load_sample("sample_search.json")
@@ -116,8 +117,9 @@ def test_parse_json_search():
     assert first_name.imdbId == "nm0091443"
     assert first_name.imdb_id == "0091443"
     assert first_name.job == "Actor,Stunts,Writer"
-    #assert first_name.name == "The Matrix"
+    # assert first_name.name == "The Matrix"
     assert first_name.url == "https://www.imdb.com/name/nm0091443"
+
 
 def test_parse_json_person_detail():
     raw_json = load_sample("sample_person.json")
@@ -147,10 +149,11 @@ def test_parse_json_series():
     assert isinstance(series.info_series.creators, list)
     assert series.info_series.creators[0].id == "0001104"
 
-
-
     # at least seasons or years should be present
-    assert len(series.info_series.display_seasons) >= 1 or len(series.info_series.display_years) >= 1
+    assert (
+        len(series.info_series.display_seasons) >= 1
+        or len(series.info_series.display_years) >= 1
+    )
 
     # categories should include cast
     # '0005342' id first cast member
@@ -161,7 +164,7 @@ def test_parse_awards_with_valid_data():
     awards_node = [
         5,  # wins
         10,  # nominations
-        {"award": {"text": "Oscar"}, "wins": 3, "nominations": 7}  # prestigious award
+        {"award": {"text": "Oscar"}, "wins": 3, "nominations": 7},  # prestigious award
     ]
     awards = parsers._parse_awards(awards_node)
     assert awards.wins == 5
@@ -170,15 +173,17 @@ def test_parse_awards_with_valid_data():
     assert awards.prestigious_award["wins"] == 3
     assert awards.prestigious_award["nominations"] == 7
 
+
 def test_parse_awards_with_missing_prestigious_award():
     awards_node = [
         2,  # wins
-        4  # nominations
+        4,  # nominations
     ]
     awards = parsers._parse_awards(awards_node)
     assert awards.wins == 2
     assert awards.nominations == 4
     assert "prestigious_award" not in awards
+
 
 def test_parse_awards_with_empty_node():
     awards_node = []
@@ -187,6 +192,7 @@ def test_parse_awards_with_empty_node():
     assert awards.nominations == 0
     assert "prestigious_award" not in awards
 
+
 def test_parse_awards_with_none_node():
     awards_node = None
     awards = parsers._parse_awards(awards_node)
@@ -194,11 +200,12 @@ def test_parse_awards_with_none_node():
     assert awards.nominations == 0
     assert "prestigious_award" not in awards
 
+
 def test_parse_awards_with_partial_prestigious_award():
     awards_node = [
         1,  # wins
         2,  # nominations
-        {"award": {}, "wins": 0, "nominations": 1}  # incomplete prestigious award
+        {"award": {}, "wins": 0, "nominations": 1},  # incomplete prestigious award
     ]
     awards = parsers._parse_awards(awards_node)
     assert awards.wins == 1
@@ -207,11 +214,12 @@ def test_parse_awards_with_partial_prestigious_award():
     assert awards.prestigious_award["wins"] == 0
     assert awards.prestigious_award["nominations"] == 1
 
+
 def test_parse_awards_with_partial_prestigious_award_none():
     awards_node = [
         1,  # wins
         2,  # nominations
-        None  # incomplete prestigious award
+        None,  # incomplete prestigious award
     ]
     awards = parsers._parse_awards(awards_node)
     assert awards.wins == 1
@@ -228,14 +236,25 @@ def test_parse_principal_credits_v2_stars_with_none_credits():
     """
     # Case 1: credits is explicitly None
     data_with_none_credits = [
-        {'grouping': {'text': 'Stars', 'groupingId':'amzn1.imdb.concept.name_credit_group.7510356e-fde9-438e-b3ad-0099ba6bc8ce'}, 'credits': None}
+        {
+            "grouping": {
+                "text": "Stars",
+                "groupingId": "amzn1.imdb.concept.name_credit_group.7510356e-fde9-438e-b3ad-0099ba6bc8ce",
+            },
+            "credits": None,
+        }
     ]
     result = parsers._parse_principal_credits_v2_stars(data_with_none_credits)
     assert result == []
 
     # Case 2: credits key is missing entirely
     data_without_credits = [
-        {'grouping': {'text': 'Stars', 'groupingId':'amzn1.imdb.concept.name_credit_group.7510356e-fde9-438e-b3ad-0099ba6bc8ce'}}
+        {
+            "grouping": {
+                "text": "Stars",
+                "groupingId": "amzn1.imdb.concept.name_credit_group.7510356e-fde9-438e-b3ad-0099ba6bc8ce",
+            }
+        }
     ]
     result = parsers._parse_principal_credits_v2_stars(data_without_credits)
     assert result == []
@@ -248,6 +267,7 @@ def test_parse_principal_credits_v2_stars_with_none_credits():
     result = parsers._parse_principal_credits_v2_stars([])
     assert result == []
 
+
 def test_parse_json_parental_guide_with_data():
     raw_json = {
         "parentsGuide": {
@@ -256,8 +276,18 @@ def test_parse_json_parental_guide_with_data():
                     "category": {"id": "violence", "text": "Violence"},
                     "guideItems": {
                         "edges": [
-                            {"node": {"isSpoiler": False, "text": {"plaidHtml": "Fighting scenes"}}},
-                            {"node": {"isSpoiler": True, "text": {"plaidHtml": "Major spoiler"}}},
+                            {
+                                "node": {
+                                    "isSpoiler": False,
+                                    "text": {"plaidHtml": "Fighting scenes"},
+                                }
+                            },
+                            {
+                                "node": {
+                                    "isSpoiler": True,
+                                    "text": {"plaidHtml": "Major spoiler"},
+                                }
+                            },
                         ]
                     },
                     "severityBreakdown": [
@@ -280,6 +310,7 @@ def test_parse_json_parental_guide_with_data():
     assert cat.has_category_texts() is True
     assert cat.category_texts_list(spoiler=False) == ["Fighting scenes"]
     assert cat.category_texts_list(spoiler=True) == ["Major spoiler"]
+
 
 def test_parse_json_parental_guide_with_empty_or_missing_returns_none():
     # missing parentsGuide
