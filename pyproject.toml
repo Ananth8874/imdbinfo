@@ -61,7 +61,7 @@ test = [
 ]
 
 [tool.setuptools]
-packages = ["imdbinfo"]
+packages = ["imdbinfo", "imdbinfo.aws_waf"]
 
 [tool.setuptools.package-data]
 "sample_json_source" = ["*"]
