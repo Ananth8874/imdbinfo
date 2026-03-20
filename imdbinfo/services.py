@@ -85,12 +85,6 @@ title_type_search_type = {
 
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
 
-# Users can override this by setting: imdbinfo.services.USER_AGENTS_LIST = [ "your-user-agent", ...]
-USER_AGENTS_LIST = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-]
-
-
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = str(imdb_id)
     num = int(re.sub(r"\D", "", imdb_id))
@@ -147,15 +141,15 @@ HEADERS = {
             'user-agent': f'{USER_AGENT}',
         }
 
+
 def request_handler(url: str) -> Any:
 
     resp = niquests.get(url, headers=HEADERS)
-
-    print(resp.text)
-
-    cookies = get_cookies(resp.text, USER_AGENT)
-
-    resp = niquests.get(url, headers=HEADERS , cookies=cookies)
+    logger.debug("Using User-Agent: %s", USER_AGENT)
+    if resp.status_code != 200:
+        logger.debug("Error fetching %s: %s", url, resp.status_code)
+        cookies = get_cookies(resp.text, USER_AGENT)
+        resp = niquests.get(url, headers=HEADERS , cookies=cookies)
     return resp
 
 
