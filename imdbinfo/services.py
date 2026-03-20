@@ -49,6 +49,7 @@ from .parsers import (
     parse_json_filmography,
     parse_json_parental_guide,
 )
+from .aws import AwsSolver
 
 logger = logging.getLogger(__name__)
 
@@ -98,18 +99,15 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     return imdb_id, lang
 
 
-def get_cookies():
-    """
-    Try to get AWS WAF token cookies if needed.
-    Returns a dictionary of cookies to be used in requests.
-    if no token is needed, returns an empty dictionary.
-    """
-    # prepare for WAF check
-    global WAF_ON
-    if not WAF_ON:
-        return {}
-    WAF_ON = False
-    return {}
+def get_cookies(text , user_agent):
+
+    solver = AwsSolver(user_agent=user_agent , domain = "www.imdb.com")
+
+    token = solver.solve(text)
+
+    return {
+        'aws-waf-token': token,
+    }
 
 
 def request_json_url(url: str) -> Any:
@@ -131,18 +129,33 @@ def request_json_url(url: str) -> Any:
     raw_json = json.loads(str(script[0]))
     return raw_json
 
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+HEADERS = {
+            "connection": "keep-alive",
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept-language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6',
+            'cache-control': 'no-cache',
+            'pragma': 'no-cache',
+            'priority': 'u=0, i',
+            'sec-ch-ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"macOS"',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
+            'upgrade-insecure-requests': '1',
+            'user-agent': f'{USER_AGENT}',
+        }
 
 def request_handler(url: str) -> Any:
-    user_agent = random.choice(USER_AGENTS_LIST)
-    logger.debug("Using User-Agent: %s", user_agent)
-    cookies = get_cookies()
-    # # if cookies is an empty dict, no cookies will be sent and normal request will be used (WAF is off)
-    # if cookies:
-    #     logger.debug("Using cookies: %s", cookies)
-    #     resp = cffi_requests.get(url, cookies=cookies, impersonate="chrome")
-    # else:
-    headers = {"User-Agent": user_agent}
-    resp = niquests.get(url, headers=headers)
+
+    resp = niquests.get(url, headers=HEADERS)
+
+    print(resp.text)
+
+    cookies = get_cookies(resp.text, USER_AGENT)
+
+    resp = niquests.get(url, headers=HEADERS , cookies=cookies)
     return resp
 
 
