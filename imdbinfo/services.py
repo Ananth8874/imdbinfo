@@ -28,7 +28,7 @@ import niquests
 import json
 from lxml import html
 from enum import Enum
-from .locale import _retrieve_url_lang, _get_country_code_from_locale
+from .locale import _retrieve_url_lang, _get_country_code_from_lang_locale
 
 from .models import (
     SearchResult,
@@ -49,6 +49,7 @@ from .parsers import (
     parse_json_filmography,
     parse_json_parental_guide,
 )
+from .aws import AwsSolver
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +85,6 @@ title_type_search_type = {
 
 TitleFilter = Union[TitleType, Tuple[TitleType, ...]]
 
-# Users can override this by setting: imdbinfo.services.USER_AGENTS_LIST = [ "your-user-agent", ...]
-USER_AGENTS_LIST = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-]
-
-
 def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     imdb_id = str(imdb_id)
     num = int(re.sub(r"\D", "", imdb_id))
@@ -98,18 +93,15 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     return imdb_id, lang
 
 
-def get_cookies():
-    """
-    Try to get AWS WAF token cookies if needed.
-    Returns a dictionary of cookies to be used in requests.
-    if no token is needed, returns an empty dictionary.
-    """
-    # prepare for WAF check
-    global WAF_ON
-    if not WAF_ON:
-        return {}
-    WAF_ON = False
-    return {}
+def get_cookies(text , user_agent):
+
+    solver = AwsSolver(user_agent=user_agent , domain = "www.imdb.com")
+
+    token = solver.solve(text)
+
+    return {
+        'aws-waf-token': token,
+    }
 
 
 def request_json_url(url: str) -> Any:
@@ -131,18 +123,33 @@ def request_json_url(url: str) -> Any:
     raw_json = json.loads(str(script[0]))
     return raw_json
 
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+HEADERS = {
+            "connection": "keep-alive",
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept-language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6',
+            'cache-control': 'no-cache',
+            'pragma': 'no-cache',
+            'priority': 'u=0, i',
+            'sec-ch-ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"macOS"',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
+            'upgrade-insecure-requests': '1',
+            'user-agent': f'{USER_AGENT}',
+        }
+
 
 def request_handler(url: str) -> Any:
-    user_agent = random.choice(USER_AGENTS_LIST)
-    logger.debug("Using User-Agent: %s", user_agent)
-    cookies = get_cookies()
-    # # if cookies is an empty dict, no cookies will be sent and normal request will be used (WAF is off)
-    # if cookies:
-    #     logger.debug("Using cookies: %s", cookies)
-    #     resp = cffi_requests.get(url, cookies=cookies, impersonate="chrome")
-    # else:
-    headers = {"User-Agent": user_agent}
-    resp = niquests.get(url, headers=headers)
+
+    resp = niquests.get(url, headers=HEADERS)
+    logger.debug("Using User-Agent: %s", USER_AGENT)
+    if resp.status_code != 200:
+        logger.debug("Error fetching %s: %s", url, resp.status_code)
+        cookies = get_cookies(resp.text, USER_AGENT)
+        resp = niquests.get(url, headers=HEADERS , cookies=cookies)
     return resp
 
 
@@ -174,14 +181,14 @@ def get_movie(imdb_id: str, locale: Optional[str] = None) -> Optional[MovieDetai
     logger.debug("Fetched url %s", url)
     return movie
 
-
+@lru_cache(maxsize=128)
 def search_title(
     search_term: str,
     locale: Optional[str] = None,
     title_type: Optional[TitleFilter] = None,
 ) -> Optional[SearchResult]:
     lang = _retrieve_url_lang(locale)
-    country_code = _get_country_code_from_locale(lang)
+    country_code = _get_country_code_from_lang_locale(lang)
 
     search_options_types = ""
     if title_type:
@@ -319,9 +326,9 @@ def get_episodes(
     return get_season_episodes(imdb_id, season, locale)
 
 
-def get_akas(imdb_id: str) -> Union[AkasData, list]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_akas(imdb_id: str, locale: Optional[str] = None) -> Union[AkasData, list]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No AKAs found for title %s", imdb_id)
         return []
@@ -330,7 +337,7 @@ def get_akas(imdb_id: str) -> Union[AkasData, list]:
     return akas
 
 
-def get_all_interests(imdb_id: str):
+def get_all_interests(imdb_id: str, locale: Optional[str] = None):
     """
         Fetch all 'interests' for a title using the provided IMDb ID.
 
@@ -342,8 +349,8 @@ def get_all_interests(imdb_id: str):
     more resource-intensive than standard API calls. Use this function only if you require interests
     beyond what is available in movie.genres, as it can impact performance.
     """
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No interests found for title %s", imdb_id)
         return []
@@ -358,9 +365,9 @@ def get_all_interests(imdb_id: str):
     return interests
 
 
-def get_trivia(imdb_id: str) -> List[Dict]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_trivia(imdb_id: str, locale: Optional[str] = None) -> List[Dict]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No trivia found for title %s", imdb_id)
         return []
@@ -369,9 +376,9 @@ def get_trivia(imdb_id: str) -> List[Dict]:
     return trivia_list
 
 
-def get_reviews(imdb_id: str) -> List[Dict]:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_reviews(imdb_id: str, locale: Optional[str] = None) -> List[Dict]:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No reviews found for title %s", imdb_id)
         return []
@@ -380,9 +387,9 @@ def get_reviews(imdb_id: str) -> List[Dict]:
     return reviews_list
 
 
-def get_parental_guide(imdb_id: str) -> Dict:
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_title_info(imdb_id)
+def get_parental_guide(imdb_id: str, locale: Optional[str] = None) -> Dict:
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_title_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No parental guide found for title %s", imdb_id)
         return {}
@@ -391,12 +398,12 @@ def get_parental_guide(imdb_id: str) -> Dict:
     return parental_guide
 
 
-def get_filmography(imdb_id) -> dict:
+def get_filmography(imdb_id,locale: Optional[str] = None) -> dict:
     """
     Fetch full filmography for a person using the provided IMDb ID.
     """
-    imdb_id, _ = normalize_imdb_id(imdb_id)
-    raw_json = _get_extended_name_info(imdb_id)
+    imdb_id, lang = normalize_imdb_id(imdb_id, locale)
+    raw_json = _get_extended_name_info(imdb_id, lang)
     if not raw_json:
         logger.warning("No full_credit found for name %s", imdb_id)
         return {}
@@ -406,15 +413,17 @@ def get_filmography(imdb_id) -> dict:
 
 
 @lru_cache(maxsize=128)
-def _get_extended_title_info(imdb_id) -> dict:
+def _get_extended_title_info(imdb_id, locale=None) -> dict:
     """
     Fetch extended info using IMDb's GraphQL API:
     including akas, trivia, reviews, interests, and parental guide.
     """
     imdbId = "tt" + imdb_id
+    country = _get_country_code_from_lang_locale(locale)
     url = GRAPHQL_URL
     headers = {
         "Content-Type": "application/json",
+        "x-imdb-user-country": country,
     }
     query = (
         """
@@ -528,11 +537,12 @@ def _get_extended_title_info(imdb_id) -> dict:
     return raw_json
 
 
-def _get_extended_name_info(person_id) -> dict:
+def _get_extended_name_info(person_id,  locale=None) -> dict:
     """
     Fetch extended person info using IMDb's GraphQL API.
     """
     person_id = "nm" + person_id
+    country = _get_country_code_from_lang_locale(locale)
 
     query = (
         """
@@ -636,6 +646,7 @@ def _get_extended_name_info(person_id) -> dict:
     url = GRAPHQL_URL
     headers = {
         "Content-Type": "application/json",
+            "x-imdb-user-country": country,
     }
     payload = {"query": query}
     logger.info("Fetching person %s from GraphQL API", person_id)
