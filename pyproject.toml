@@ -17,7 +17,9 @@ dependencies = [
     "lxml",
     "pydantic",
     "jmespath",
-    "deprecated"
+    "deprecated",
+    "curl_cffi",
+    "cryptography"
 ]
 
 
