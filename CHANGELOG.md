@@ -185,3 +185,6 @@
 - Misc / Internal:
   - Logging improvements and small refactors to parsing/service modules.
   - Backwards-compatible fallbacks retained where possible.
+  
+## v0.8.1
+- Fix AWS WAF blocking
