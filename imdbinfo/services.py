@@ -55,9 +55,7 @@ logger = logging.getLogger(__name__)
 
 GRAPHQL_URL = "https://api.graphql.imdb.com/"
 
-# enable WAF handling by default, will be disabled if not needed after first request for performance
-WAF_ON = True
-
+_waf_cookies: Optional[Dict] = None
 
 class TitleType(Enum):
     """
@@ -94,11 +92,8 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
 
 
 def get_cookies(text , user_agent):
-
     solver = AwsSolver(user_agent=user_agent , domain = "www.imdb.com")
-
     token = solver.solve(text)
-
     return {
         'aws-waf-token': token,
     }
@@ -127,7 +122,6 @@ USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
 HEADERS = {
             "connection": "keep-alive",
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6',
             'cache-control': 'no-cache',
             'pragma': 'no-cache',
             'priority': 'u=0, i',
@@ -143,13 +137,13 @@ HEADERS = {
 
 
 def request_handler(url: str) -> Any:
-
-    resp = niquests.get(url, headers=HEADERS)
+    global _waf_cookies
+    resp = niquests.get(url, headers=HEADERS, cookies=_waf_cookies)
     logger.debug("Using User-Agent: %s", USER_AGENT)
     if resp.status_code != 200:
         logger.debug("Error fetching %s: %s", url, resp.status_code)
-        cookies = get_cookies(resp.text, USER_AGENT)
-        resp = niquests.get(url, headers=HEADERS , cookies=cookies)
+        _waf_cookies = get_cookies(resp.text, USER_AGENT)
+        resp = niquests.get(url, headers=HEADERS, cookies=_waf_cookies)
     return resp
 
 
