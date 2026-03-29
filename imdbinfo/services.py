@@ -226,7 +226,7 @@ def request_handler(url: str) -> Any:
                 url,
             )
             _delete_waf_cookie_file()
-    except WAFError as waf_exc:
+    except Exception as waf_exc:
         logger.debug(
             "WAF solver failed, response will be evaluated upstream: %s", waf_exc
         )
