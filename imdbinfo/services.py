@@ -20,6 +20,7 @@
 # SOFTWARE.
 import random
 import re
+from pathlib import Path
 from typing import Optional, Dict, Union, List, Tuple, Any
 from functools import lru_cache
 from time import time
@@ -56,7 +57,58 @@ logger = logging.getLogger(__name__)
 
 GRAPHQL_URL = "https://api.graphql.imdb.com/"
 
-_waf_cookies: Optional[Dict] = None
+_WAF_COOKIE_FILE = Path.cwd() / ".cache" / "imdbinfo" / "waf_cookies.json"
+
+# In-memory mirror of the on-disk cookie cache.
+# _UNSET  → not yet loaded this process (triggers a one-time file read).
+# None    → known to be absent (no file / invalidated).
+# dict    → valid cookies ready to use.
+_UNSET = object()
+_waf_cookies: Any = _UNSET
+
+
+def _load_waf_cookies() -> Optional[Dict]:
+    """Return WAF cookies from the in-memory cache.
+    On first call per process the cache is populated from disk (one file read only)."""
+    global _waf_cookies
+    if _waf_cookies is not _UNSET:
+        return _waf_cookies          # fast path — already in memory
+    try:
+        if _WAF_COOKIE_FILE.exists():
+            data = json.loads(_WAF_COOKIE_FILE.read_text(encoding="utf-8"))
+            logger.debug("Loaded WAF cookies from %s", _WAF_COOKIE_FILE)
+            _waf_cookies = data
+            return _waf_cookies
+    except Exception as exc:
+        logger.debug("Could not load WAF cookies from cache file: %s", exc)
+    _waf_cookies = None
+    return None
+
+
+def _save_waf_cookies(cookies: Dict) -> None:
+    """Update the in-memory cache and persist to disk."""
+    global _waf_cookies
+    _waf_cookies = cookies
+    try:
+        _WAF_COOKIE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _WAF_COOKIE_FILE.write_text(json.dumps(cookies), encoding="utf-8")
+        logger.debug("Saved WAF cookies to %s", _WAF_COOKIE_FILE)
+    except Exception as exc:
+        logger.debug("Could not save WAF cookies to cache file: %s", exc)
+
+
+def _delete_waf_cookie_file() -> None:
+    """Clear the in-memory cache and remove the on-disk file."""
+    global _waf_cookies
+    _waf_cookies = None
+    try:
+        if _WAF_COOKIE_FILE.exists():
+            _WAF_COOKIE_FILE.unlink()
+            logger.debug("Deleted WAF cookie cache file %s", _WAF_COOKIE_FILE)
+    except Exception as exc:
+        logger.debug("Could not delete WAF cookie cache file: %s", exc)
+
+
 
 class TitleType(Enum):
     """
@@ -92,7 +144,7 @@ def normalize_imdb_id(imdb_id: str, locale: Optional[str] = None):
     return imdb_id, lang
 
 
-def get_cookies(text , user_agent):
+def get_cookies(text , user_agent, force = False):
     solver = AwsSolver(user_agent=user_agent , domain = "www.imdb.com")
     token = solver.solve(text)
     return {
@@ -150,16 +202,36 @@ HEADERS = {
 
 
 def request_handler(url: str) -> Any:
-    global _waf_cookies
-    resp = niquests.get(url, headers=HEADERS, cookies=_waf_cookies)
-    logger.debug("Using User-Agent: %s", USER_AGENT)
-    if resp.status_code != 200:
-        logger.debug("Error fetching %s: %s", url, resp.status_code)
-        try:
-            _waf_cookies = get_cookies(resp.text, USER_AGENT)
-            resp = niquests.get(url, headers=HEADERS, cookies=_waf_cookies)
-        except Exception as waf_exc:
-            logger.debug("WAF solver did not run (response will be evaluated upstream): %s", waf_exc)
+    waf_cookies = _load_waf_cookies()
+    resp = niquests.get(url, headers=HEADERS, cookies=waf_cookies)
+    if resp.status_code == 200:
+        return resp
+    # Non-200: invalidate cached cookies and request fresh ones
+    logger.debug(
+        "Non-200 response (%s) for %s — invalidating cached WAF cookies and refreshing",
+        resp.status_code,
+        url,
+    )
+    _delete_waf_cookie_file()
+    try:
+        waf_cookies = get_cookies(resp.text, USER_AGENT)
+        _save_waf_cookies(waf_cookies)
+        logger.debug("WAF cookies refreshed — retrying %s", url)
+        resp = niquests.get(url, headers=HEADERS, cookies=waf_cookies)
+        if resp.status_code != 200:
+            logger.warning(
+                "Request still non-200 (%s) after WAF cookie refresh for %s — "
+                "discarding cookies, will retry fresh on next call",
+                resp.status_code,
+                url,
+            )
+            _delete_waf_cookie_file()
+    except WAFError as waf_exc:
+        logger.debug(
+            "WAF solver failed, response will be evaluated upstream: %s", waf_exc
+        )
+        _delete_waf_cookie_file()
+
     return resp
 
 
