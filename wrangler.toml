@@ -1,0 +1,5 @@
+name = "imdb-api"
+main = "worker.js"
+compatibility_date = "2026-04-29"
+workers_dev = true
+compatibility_flags = ["nodejs_compat"]
