@@ -1,39 +1,43 @@
 export default {
   async fetch(request) {
     const url = new URL(request.url);
-    const id = url.searchParams.get("id");
-    const search = url.searchParams.get("search");
+    const path = url.pathname;
 
     try {
-      // 🔍 SEARCH
-      if (search) {
+      // ✅ SEARCH ROUTE
+      if (path === "/search") {
+        const query = url.searchParams.get("query");
+        if (!query) return json({ error: "Missing query" });
+
+        const clean = query.split("(")[0].trim();
+
         const res = await fetch(
-          `https://v2.sg.media-imdb.com/suggestion/${search[0]}/${search}.json`
+          `https://v2.sg.media-imdb.com/suggestion/${clean[0]}/${encodeURIComponent(clean)}.json`
         );
         const data = await res.json();
 
         return json({
-          query: search,
           results: data.d?.map(x => ({
-            id: x.id,
+            id: x.id?.replace("tt", ""),
             title: x.l,
             year: x.y,
-            type: x.q,
+            type: normalizeType(x.q),
             poster: x.i?.imageUrl
           })) || []
         });
       }
 
-      // 🎬 MOVIE DETAILS
-      if (id) {
+      // ✅ TITLE ROUTE
+      if (path.startsWith("/title/tt")) {
+        const id = path.split("/")[2];
+
         const res = await fetch(`https://www.imdb.com/title/${id}/`);
         const html = await res.text();
 
-        // safer parsing
-        const get = (regex) => html.match(regex)?.[1] || null;
+        const get = (r) => html.match(r)?.[1] || null;
 
         return json({
-          id,
+          id: id.replace("tt", ""),
           title: get(/<title>(.*?)<\/title>/),
           year: get(/"datePublished":"(\d{4})"/),
           rating: get(/"ratingValue":\s*"([^"]+)"/),
@@ -43,7 +47,12 @@ export default {
         });
       }
 
-      return json({ error: "Use ?id= or ?search=" });
+      // ✅ OPTIONAL: SEASON ROUTE (avoid crash)
+      if (path.includes("/season/")) {
+        return json({ episodes: [] });
+      }
+
+      return json({ error: "Invalid endpoint" });
 
     } catch (e) {
       return json({ error: e.message });
@@ -51,8 +60,14 @@ export default {
   }
 };
 
+function normalizeType(q) {
+  if (!q) return "movie";
+  if (q.toLowerCase().includes("tv")) return "tvSeries";
+  return "movie";
+}
+
 function json(data) {
-  return new Response(JSON.stringify(data, null, 2), {
+  return new Response(JSON.stringify(data), {
     headers: { "content-type": "application/json" }
   });
 }
